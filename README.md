@@ -1,4 +1,4 @@
-# PlateRecognition Engine
+# Machine Learning License Plate Recognition
 
 ## Overview
 This project implements a **high-performance License Plate Recognition System** designed for real-time detection and OCR of license plates. It uses a YOLOv3-based detector for plate detection and Tesseract for OCR. Built in C++ with OpenCV and Tesseract, the system is optimized for accuracy and performance in processing images containing license plates.
