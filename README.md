@@ -18,7 +18,7 @@ This project implements a **high-performance License Plate Recognition System** 
 - Integrated a YOLOv3-based detection model using OpenCV’s DNN module.
 - Fine-tuned the YOLO model on license plate datasets.
 - **Model Files:**  
-  - Download the `.cfg` and `.weights` files from a pre-trained model repository (e.g., [Plate_detect_YOLO by quangnhat185](https://github.com/quangnhat185/Plate_detect_YOLO)) and place them in the `models/` folder as `yolov3_license_plate.cfg` and `yolov3_license_plate.weights`.  
+  - Download the `.cfg` and `.weights` files from a pre-trained model repository and place them in the `models/` folder as `yolov3_license_plate.cfg` and `yolov3_license_plate.weights`.  
   - Alternatively, fine-tune the official YOLOv3 model (from [pjreddie.com](https://pjreddie.com/darknet/yolo/)) on a license plate dataset (e.g., OpenALPR Benchmark Dataset, AOLP) to generate custom weights.
 
 ### 3. OCR Implementation
