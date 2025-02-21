@@ -95,8 +95,11 @@ For OCR with Tesseract, you need the language data files. Download the `eng.trai
 
 ## Future Enhancements
 🚀 **Integration with Real-Time Video Streaming:** Extend the system to process live video feeds.
+
 🧠 **Advanced OCR Techniques:** Incorporate deep learning-based OCR for improved recognition accuracy.
+
 ⚡ **Hardware Acceleration:** Optimize the detection pipeline using CUDA or OpenVINO.
+
 📈 **Enhanced Preprocessing:** Improve image preprocessing to handle various lighting conditions and plate orientations.
 
 ## Contributing
