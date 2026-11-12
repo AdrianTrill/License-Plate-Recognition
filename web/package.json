@@ -10,7 +10,6 @@
     "onnxruntime-web": "1.31.1"
   },
   "devDependencies": {
-    "gifenc": "1.0.3",
     "puppeteer-core": "25.17.0"
   }
 }
