@@ -1,6 +1,11 @@
 // The camera and video modes: read frames as fast as the networks allow, follow the plates with the C++ tracker,
 // and log each plate once it is read confidently.
 
+// Read less often than this in each second of a video, and a plate that passes quickly is missed: a video plays
+// slower when the reader can't keep up, down to a quarter of its speed.
+const READS_PER_SECOND = 20;
+const SLOWEST = 0.25;
+
 export class Live {
   constructor({ engine, video, onResult, onEvents, onState }) {
     this.engine = engine;
@@ -15,7 +20,33 @@ export class Live {
     this.generation = 0;
     this.facing = 'environment';
     this.frames = [];
+    this.pacing = true;
+    this.rate = 1;
+    this.lastRead = null; // when the last read finished, for the pace; forgotten across a pause or a jump
     this.video.addEventListener('ended', () => this.ended());
+    this.video.addEventListener('seeking', () => {
+      this.lastRead = null;
+    });
+  }
+
+  // Whether a video slows down to the reader's pace; otherwise it plays at its own speed and frames are skipped.
+  setPacing(pacing) {
+    this.pacing = pacing;
+    if (!pacing) this.setRate(1);
+  }
+
+  setRate(rate) {
+    this.rate = rate;
+    if (Math.abs(this.video.playbackRate - rate) > 0.01) this.video.playbackRate = rate;
+  }
+
+  // After each read: slow down at once when reads take longer, so a plate coming into view is read from its first
+  // frames, and speed up gently when they are quick again.
+  pace(interval) {
+    if (this.kind !== 'video' || !this.pacing || !(interval > 0)) return;
+    const target = Math.min(1, Math.max(SLOWEST, 1000 / READS_PER_SECOND / interval));
+    const step = Math.max(0.02, 0.25 * (target - this.rate));
+    this.setRate(Math.round(100 * (target < this.rate ? target : Math.min(target, this.rate + step))) / 100);
   }
 
   async startCamera(facing = this.facing) {
@@ -43,10 +74,11 @@ export class Live {
     }
   }
 
-  async startVideo(file) {
+  // Plays a video, from a File the visitor opened or a sample's URL, and reads it as it plays.
+  async startVideo(source) {
     this.stop();
     this.video.srcObject = null;
-    this.video.src = URL.createObjectURL(file);
+    this.video.src = typeof source === 'string' ? source : URL.createObjectURL(source);
     this.video.loop = false;
     await new Promise((resolve, reject) => {
       this.video.onloadedmetadata = resolve;
@@ -58,6 +90,8 @@ export class Live {
 
   begin(kind) {
     this.kind = kind;
+    this.setRate(1);
+    this.lastRead = null;
     this.running = true;
     this.paused = false;
     this.started = performance.now();
@@ -87,6 +121,7 @@ export class Live {
   toggle() {
     if (!this.running) return;
     this.paused = !this.paused;
+    this.lastRead = null;
     if (this.paused) this.video.pause();
     else this.video.play();
     this.onState({ running: true, paused: this.paused, kind: this.kind });
@@ -131,16 +166,21 @@ export class Live {
         copy.close();
         return;
       }
-      this.frames.push(performance.now());
+      const now = performance.now();
+      this.frames.push(now);
       while (this.frames.length > 20) this.frames.shift();
       const elapsed = (this.frames.at(-1) - this.frames[0]) / Math.max(1, this.frames.length - 1);
-      this.onResult(result, {
+      if (this.lastRead !== null) this.pace(now - this.lastRead);
+      this.lastRead = now;
+      const info = {
         width: copy.width,
         height: copy.height,
         latency: performance.now() - start,
         fps: this.frames.length > 1 ? 1000 / elapsed : 0,
+        rate: this.kind === 'video' ? this.rate : 1,
         timestamp,
-      });
+      };
+      this.onResult(result, info, copy);
       if (result.tracking.events.length > 0) this.onEvents(result.tracking.events, copy);
       copy.close();
     }

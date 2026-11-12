@@ -1,0 +1,82 @@
+[
+  {
+    "id": "ro-cluj-napoca-traffic",
+    "file": "videos/ro-cluj-napoca-traffic.mp4",
+    "poster": "videos/ro-cluj-napoca-traffic.jpg",
+    "title": "Traffic on a tram line, Cluj-Napoca",
+    "country": "RO",
+    "duration": 12.0,
+    "width": 1280,
+    "height": 720,
+    "plates": [
+      "CJ027327",
+      "B36NWH",
+      "B35CKA",
+      "CJ92RSE",
+      "CJ26BCB",
+      "CJ01RMM"
+    ],
+    "author": "LDEGM Old Channel",
+    "license": "CC BY 3.0",
+    "license_url": "https://creativecommons.org/licenses/by/3.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Trams_in_Cluj_Napoca_(15_08_2012).webm"
+  },
+  {
+    "id": "nl-2cv-parade",
+    "file": "videos/nl-2cv-parade.mp4",
+    "poster": "videos/nl-2cv-parade.jpg",
+    "title": "A Citroën 2CV parade, eastern Netherlands",
+    "country": "NL",
+    "duration": 16.0,
+    "width": 1280,
+    "height": 720,
+    "plates": [
+      "EP7242",
+      "90YD20",
+      "AR4597",
+      "7916NG",
+      "GL28ZR",
+      "BE6937",
+      "PM0187"
+    ],
+    "author": "OSeveno",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Multiple_Citro%C3%ABn_2CV_vehicles_driving_by_(east_Netherlands,_2022).webm"
+  },
+  {
+    "id": "ro-sibiu-taxi",
+    "file": "videos/ro-sibiu-taxi.mp4",
+    "poster": "videos/ro-sibiu-taxi.jpg",
+    "title": "A taxi pushed to the station, Sibiu",
+    "country": "RO",
+    "duration": 10.8,
+    "width": 1280,
+    "height": 720,
+    "plates": [
+      "SB27RMF",
+      "B45XNB"
+    ],
+    "author": "Draceane",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Sibiu,_taxik%C3%A1%C5%99i_p%C5%99ed_n%C3%A1dra%C5%BE%C3%ADm,_2014.webm"
+  },
+  {
+    "id": "fr-lyon-parking",
+    "file": "videos/fr-lyon-parking.mp4",
+    "poster": "videos/fr-lyon-parking.jpg",
+    "title": "Parallel parking at night, Lyon",
+    "country": "FR",
+    "duration": 11.0,
+    "width": 1280,
+    "height": 720,
+    "plates": [
+      "BP843GS"
+    ],
+    "author": "Benoît Prieur",
+    "license": "CC0",
+    "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+    "source": "https://commons.wikimedia.org/wiki/File:Man%C5%93uvre_de_stationnement_de_type_cr%C3%A9neau_%C3%A0_Lyon_en_janvier_2018.webm"
+  }
+]

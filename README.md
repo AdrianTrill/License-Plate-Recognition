@@ -23,11 +23,11 @@ License Plate Recognition finds and reads license plates in photos, videos, and 
 
 | Part | What it does | How it is checked |
 | --- | --- | --- |
-| **[Live demo](#try-it)** | Photos, videos, and the camera, read in the page on WebGPU or WebAssembly. The networks, 13 MB, download once, are checked against their SHA-256, and stay cached | Headless Chrome reads every sample, follows the plates in a video, and runs the camera, on every push |
+| **[Live demo](#try-it)** | Photos, videos, and the camera, read in the page on WebGPU or WebAssembly, with twelve sample photos and four sample videos. The networks, 13 MB, download once, are checked against their SHA-256, and stay cached | Headless Chrome reads every sample photo, plays a sample video and checks its log, and runs the camera, on every push |
 | **[One pipeline, two runtimes](#one-pipeline-two-runtimes)** | The C++20 pipeline natively with ONNX Runtime, and compiled to WebAssembly with ONNX Runtime Web | On all 444 benchmark photos, the networks' inputs are identical bit for bit and every reading is the same |
 | **[Detection](#how-a-photo-is-read)** | YOLOv9-t at 384 pixels, with its non-maximum suppression moved out of the graph into C++, so its thresholds change as you drag them | The cut graph and the C++ suppression must find exactly the published graph's plates before the model is written |
 | **[Reading](#how-a-photo-is-read)** | Ten character slots and 66 regions, and a confidence that is the network's probability for exactly the text it read | Unit tests, and twelve labeled photos from ten countries |
-| **[Video](#following-plates-through-a-video)** | Plates followed from frame to frame, their reads fused, and each one logged once | Unit tests, a video piped in from ffmpeg, and a video recorded in the browser |
+| **[Video](#following-plates-through-a-video)** | Plates followed from frame to frame, their reads fused, and each one logged once; a video slows down when the reader can't keep up with it | Unit tests, the four sample videos read natively against their labels, and in the browser |
 | **[Measured accuracy](#measured-accuracy)** | 443 of 444 plates found and 411 read exactly; 96.7% exact among the 90% of reads it is surest of | CI downloads the benchmark, runs it again, and requires the same numbers |
 | **[Command line](#command-line)** | `lpr`: photos to a table, JSON, or annotated copies; videos from ffmpeg; the evaluation; timings | CTest, on Linux, macOS, and Windows, and under AddressSanitizer |
 
@@ -35,7 +35,7 @@ License Plate Recognition finds and reads license plates in photos, videos, and 
 
 ## Try it
 
-**[Open the live demo](https://adriantrill.github.io/License-Plate-Recognition/).** It opens on a photo from Cluj-Napoca, already read. Pick another of the twelve samples, drop or paste a photo of your own, open a video, or start the camera; on a phone the camera opens on the back. The first visit downloads ONNX Runtime Web (7 MB compressed for WebGPU, 4 MB without) and the two networks (11 MB compressed), checks the networks against the SHA-256 hashes in their manifest, and keeps them for next time. Whatever you open stays in the page. Press <kbd>?</kbd> for the shortcuts.
+**[Open the live demo](https://adriantrill.github.io/License-Plate-Recognition/).** It opens on a photo from Cluj-Napoca, already read. Pick another of the twelve sample photos, play one of the four sample videos, drop or paste a photo or open a video of your own, or start the camera; on a phone the camera opens on the back. The first visit downloads ONNX Runtime Web (7 MB compressed for WebGPU, 4 MB without) and the two networks (11 MB compressed), checks the networks against the SHA-256 hashes in their manifest, and keeps them for next time. Whatever you open stays in the page. Press <kbd>?</kbd> for the shortcuts.
 
 Or read plates from a terminal:
 
@@ -55,7 +55,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel
 - **The plates** show each reading on a plate of its own, with the region's code on a band, and each character underlined in green, amber, or red by how sure the reader is of it; hovering a character lists the symbols it nearly read instead. For the samples, each reading is checked against the photo's label.
 - **What the reader saw** shows the 128×64 pixels the reader was given for the plate, and its confidence in each of its ten slots; the slots past the end of the plate hold padding.
 - **The pipeline** shows where the time went, stage by stage, colored by where each stage runs: in a network, in the C++ compiled to WebAssembly, or in the browser.
-- **Settings** (<kbd>S</kbd>) change the detector's threshold and the overlap limit of its suppression, and the photo is read again as you drag them; WebGPU can be switched off, and the labels hidden. The page comes in dark and light themes, works on phones, and gives each sample a link of its own.
+- **Settings** (<kbd>S</kbd>) change the detector's threshold and the overlap limit of its suppression, and the photo is read again as you drag them; WebGPU can be switched off, the labels hidden, and videos left to play at their own speed. The page comes in dark and light themes, works on phones, and gives each sample photo and video a link of its own.
 
 ## How a photo is read
 
@@ -93,25 +93,36 @@ Both builds compute the same bytes: the resampling uses integers, pixels become 
 ## Following plates through a video
 
 <p align="center">
-  <img src="docs/assets/video.png" width="857" alt="The video view: a police car's plate followed through a panning video, labeled CJ27CLC at 99.8%, with the plate log listing it once with its best view, its region, when it appeared, and how many reads it took">
+  <img src="docs/assets/video.png" width="857" alt="The video view: traffic on a tram line in Cluj-Napoca, an approaching car's plate followed and labeled CJ01RMM at 92.2%, beside the plate log listing the six plates the clip has shown, each once, with its best view, its confidence, its region, when it appeared, how many reads it took, and a check that it matches the clip's labels; under the video, the four sample videos">
 </p>
 
-In camera and video modes the page reads frames as fast as the networks allow, and [`PlateTracker`](include/lpr/tracker.hpp) follows the plates between them:
+The video mode comes with four sample videos from Wikimedia Commons, each labeled with the plates it shows: traffic on a tram line in Cluj-Napoca, a Citroën 2CV parade in the Netherlands, a taxi in Sibiu, and parallel parking at night in Lyon. The first one plays as the mode opens, and the log checks each plate against the labels. In camera and video modes the page reads frames as fast as the networks allow, and [`PlateTracker`](include/lpr/tracker.hpp) follows the plates between them:
 
 - **Matching.** Each plate continues the track whose predicted box it overlaps most; the prediction moves the last box at the track's velocity. A plate too fast to overlap is matched to the nearest track of about its size within a plate's width.
 - **Fusion.** A track's reads are averaged slot by slot, each weighted by its confidence, so a blurred frame counts for little and a misread character is outvoted. Reads are fused by length, and the length with the most weight wins, so a reading that lost or gained a character is never averaged into the rest.
 - **Edges.** A plate within 4 pixels (or 0.5% of the frame) of its edge may be cut off, and a cut-off plate reads confidently and wrongly, as `08ZJE` for `B108ZJE`; such frames move the track but are not read into it.
-- **Events.** A track is reported once it has three reads and its fused confidence reaches 0.6, reported again if its text changes, and ends a second after it was last seen. The page logs each plate once, with its best view, and exports the log as CSV.
+- **Events.** A track is reported once it has three reads and a confident reading: a fused confidence of at least 0.6, and at least four characters, since fewer are part of a plate. It is reported again only for another confident reading with other text, and ends a second after it was last seen, with its text's most confident reading. The page logs each plate once, even when it is lost and found again, with its view from the frame it read most confidently, and exports the log as CSV.
+- **Pace.** A camera's frames are read as they come, but a video can wait. At WebAssembly's 9 frames a second, a plate that passes in half a second would be read four or five times, often too few for a confident reading, so a video slows down until at least 20 of its frames are read in each second of it, down to a quarter of its speed; the speed shows beside the frame rate. On WebGPU the samples play at their own speed, and the settings can turn this off.
 
-The command line follows plates in any video ffmpeg can decode:
+The command line follows plates in any video ffmpeg can decode, here the Cluj-Napoca sample:
 
 ```console
-$ ffmpeg -i clip.mp4 -f rawvideo -pix_fmt rgb24 - | ./build/lpr video --size 1280x720 --fps 30
-00:00.067  reported  #1   B108ZJE      99.5%  3 reads
-00:00.667  reported  #2   MAI58767     99.3%  3 reads
-00:01.433  ended     #1   B108ZJE      99.4%  13 reads
-00:02.967  ended     #2   MAI58767     99.4%  72 reads
+$ ffmpeg -i samples/videos/ro-cluj-napoca-traffic.mp4 -f rawvideo -pix_fmt rgb24 - | ./build/lpr video --size 1280x720 --fps 29.97
+00:00.067  reported  #1   CJ027327     99.1%  3 reads
+00:01.335  reported  #2   B36NWH       99.7%  3 reads
+00:01.401  ended     #1   CJ027327     99.2%  43 reads
+00:05.339  reported  #3   B35CKA       99.6%  3 reads
+00:05.606  reported  #4   CJ92RSE      99.2%  3 reads
+00:05.405  ended     #2   B36NWH       99.8%  124 reads
+00:06.440  reported  #5   CJ26BCB      99.1%  3 reads
+00:05.839  ended     #4   CJ92RSE      99.5%  10 reads
+00:06.406  ended     #3   B35CKA       99.8%  31 reads
+00:09.076  reported  #7   CJ01RMM      61.9%  24 reads
+00:08.542  ended     #5   CJ26BCB      99.7%  62 reads
+00:11.912  ended     #7   CJ01RMM      94.6%  103 reads
 ```
+
+Each line has the time the plate was last seen, and a plate's end is only known a second later, so it can follow a later report. `CJ01RMM` is reported while its car is still far away, as soon as its fused reading is confident, and ends far surer, once the car has come close.
 
 ## Measured accuracy
 
@@ -216,6 +227,7 @@ node web/serve.mjs build-wasm/site    # http://127.0.0.1:8080
 ├── tools/
 │   ├── lpr_main.cpp            # the command line
 │   ├── prepare_models.py       # the models from their pinned releases, the detector's graph cut and checked
+│   ├── check_videos.py         # the sample videos read natively, against their labels
 │   └── fetch_benchmark.sh      # the OpenALPR benchmark, at a pinned commit
 ├── tests/                      # unit tests, and the real models on the samples
 ├── web/
@@ -226,7 +238,7 @@ node web/serve.mjs build-wasm/site    # http://127.0.0.1:8080
 │   ├── capture.mjs             # this README's images, and the link preview
 │   └── serve.mjs
 ├── models/                     # manifest.json, and the networks once prepared
-├── samples/                    # twelve photos from Wikimedia Commons, labeled
+├── samples/                    # twelve photos and four videos from Wikimedia Commons, labeled
 ├── cmake/                      # ONNX Runtime, and the models' download
 └── docs/
     ├── evaluation.json         # measured by lpr evaluate
@@ -237,6 +249,7 @@ node web/serve.mjs build-wasm/site    # http://127.0.0.1:8080
 
 ```bash
 ctest --test-dir build --output-on-failure                       # 6 unit suites, the models on the samples, the command line
+python tools/check_videos.py build/lpr                           # the sample videos, natively, against their labels
 node web/check.mjs build-wasm/site build/lpr samples/*.jpg       # the WebAssembly build against the native one
 ./build/lpr --json samples/*.jpg > native.json
 node web/ui-check.mjs build-wasm/site native.json                # the site in headless Chrome
@@ -249,7 +262,7 @@ node web/ui-check.mjs build-wasm/site native.json                # the site in h
 | CI | Sanitizers | The same tests under AddressSanitizer, LeakSanitizer, and UndefinedBehaviorSanitizer |
 | CI | Format | clang-format |
 | CI | Evaluation | The benchmark downloaded and read again; the counts must match [`docs/evaluation.json`](docs/evaluation.json) |
-| Pages | Browser build | The pipeline compiled to WebAssembly and the site built; the WebAssembly build against the native one on every sample; then the site in headless Chrome: every sample read as labeled and as natively, the inspector, keys, settings, an upload, the camera, a video's plates logged once each, and a phone's screen, with no console errors or failed requests. Main is then deployed |
+| Pages | Browser build | The pipeline compiled to WebAssembly and the site built; the sample videos read natively, every labeled plate required; the WebAssembly build against the native one on every sample photo; then the site in headless Chrome: every sample photo read as labeled and as natively, the inspector, keys, settings, an upload, the camera, the first sample video playing by itself with its labeled plates logged, a recorded video's plates logged once each, and a phone's screen, with no console errors or failed requests. Main is then deployed |
 
 [`web/capture.mjs`](web/capture.mjs) regenerates this README's images and the link preview from the built site.
 
@@ -264,6 +277,6 @@ node web/ui-check.mjs build-wasm/site native.json                # the site in h
 - The detector is [open-image-models](https://github.com/ankandrew/open-image-models)' `yolo-v9-t-384-license-plate-end2end`, and the reader [fast-plate-ocr](https://github.com/ankandrew/fast-plate-ocr)'s `cct-s-v2-global-model`, both by ankandrew under the MIT License; [`models/README.md`](models/README.md) has their notices. The detector was trained with [YOLOv9](https://github.com/WongKinYiu/yolov9) (Wang and Liao, 2024).
 - The networks run on [ONNX Runtime](https://onnxruntime.ai) and ONNX Runtime Web (MIT). Images are decoded and encoded with [stb_image and stb_image_write](https://github.com/nothings/stb) (public domain), and the pipeline compiled with [Emscripten](https://emscripten.org).
 - The [OpenALPR benchmark](https://github.com/openalpr/benchmarks) (AGPL-3.0) is downloaded for the evaluation, not redistributed.
-- The sample photos are from Wikimedia Commons; [`samples/README.md`](samples/README.md) credits each author and license.
+- The sample photos and videos are from Wikimedia Commons; [`samples/README.md`](samples/README.md) credits each author and license, and lists what was cut from each video.
 
 Released under the [MIT License](LICENSE).

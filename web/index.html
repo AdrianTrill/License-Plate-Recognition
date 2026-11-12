@@ -98,6 +98,7 @@
         </div>
         <div class="viewer-busy" id="busy" hidden><span class="scanline"></span></div>
         <a class="credit" id="credit" target="_blank" rel="noopener" hidden></a>
+        <div class="timeline" id="timeline" role="slider" aria-label="Video position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" tabindex="-1" hidden><div class="timeline-fill" id="timeline-fill"></div></div>
         <div class="hud" id="hud" hidden>
           <span class="hud-live"><span class="hud-dot"></span><span id="hud-label">Live</span></span>
           <span id="hud-stats"></span>
@@ -122,10 +123,9 @@
           <p class="tray-note">Point it at a plate a few meters away. Frames are read on this device and never leave it.</p>
         </div>
         <div class="tray-live" data-for="video" hidden>
-          <button class="button primary" id="open-video"><svg><use href="#i-upload"/></svg>Open a video</button>
+          <button class="button primary" id="open-video" title="MP4 or WebM: dashcams, gates, and parking lots work best"><svg><use href="#i-upload"/></svg>Open a video</button>
           <button class="button" id="video-toggle" hidden><svg><use href="#i-pause"/></svg><span>Pause</span></button>
-          <div class="timeline" id="timeline" hidden><div class="timeline-fill" id="timeline-fill"></div></div>
-          <span class="tray-note" id="video-note">MP4 or WebM: dashcams, gates, and parking lots work best.</span>
+          <div class="samples" id="video-samples" role="listbox" aria-label="Sample videos"></div>
         </div>
       </div>
     </section>
@@ -189,6 +189,10 @@
       <input type="checkbox" id="labels" checked>
       <span class="setting-label">Label plates on the image</span>
     </label>
+    <label class="setting toggle">
+      <input type="checkbox" id="pacing" checked>
+      <span class="setting-label">Slow videos down to read every plate</span>
+    </label>
   </div>
 
   <dialog class="dialog" id="help">
@@ -200,7 +204,7 @@
       <dt><kbd>P</kbd> <kbd>C</kbd> <kbd>V</kbd></dt><dd>Photo, camera, or video</dd>
       <dt><kbd>O</kbd></dt><dd>Open a photo or a video</dd>
       <dt><kbd>Ctrl</kbd> <kbd>V</kbd></dt><dd>Read a photo from the clipboard</dd>
-      <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next sample</dd>
+      <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next sample photo or video</dd>
       <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Select a plate</dd>
       <dt><kbd>Space</kbd></dt><dd>Pause or resume the camera or video</dd>
       <dt><kbd>L</kbd></dt><dd>Show or hide the labels on the image</dd>

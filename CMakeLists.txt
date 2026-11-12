@@ -138,6 +138,12 @@ if(EMSCRIPTEN)
          ${PROJECT_SOURCE_DIR}/web/social.png)
     file(GLOB LPR_WEB_SCRIPTS CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/web/js/*.js)
     file(GLOB LPR_SAMPLE_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/samples/*.jpg ${PROJECT_SOURCE_DIR}/samples/*.json)
+    file(GLOB LPR_SAMPLE_VIDEOS CONFIGURE_DEPENDS
+         ${PROJECT_SOURCE_DIR}/samples/videos/*.mp4 ${PROJECT_SOURCE_DIR}/samples/videos/*.jpg)
+    set(LPR_COPY_SAMPLE_VIDEOS "")
+    if(LPR_SAMPLE_VIDEOS)
+        set(LPR_COPY_SAMPLE_VIDEOS COMMAND ${CMAKE_COMMAND} -E copy ${LPR_SAMPLE_VIDEOS} ${LPR_SITE_DIR}/samples/videos)
+    endif()
     set(LPR_ORT_DIST ${PROJECT_SOURCE_DIR}/web/node_modules/onnxruntime-web/dist)
     set(LPR_ORT_FILES
         ort.wasm.min.mjs ort-wasm-simd-threaded.mjs ort-wasm-simd-threaded.wasm
@@ -154,11 +160,13 @@ if(EMSCRIPTEN)
     add_custom_target(lpr_site
         COMMAND ${CMAKE_COMMAND} -E make_directory
                 ${LPR_SITE_DIR}/js ${LPR_SITE_DIR}/ort ${LPR_SITE_DIR}/models ${LPR_SITE_DIR}/samples
+                ${LPR_SITE_DIR}/samples/videos
         COMMAND ${CMAKE_COMMAND} -E copy ${LPR_WEB_ASSETS} ${LPR_SITE_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy ${LPR_WEB_SCRIPTS} ${LPR_SITE_DIR}/js
         COMMAND ${CMAKE_COMMAND} -E copy ${LPR_ORT_FILES} ${LPR_SITE_DIR}/ort
         COMMAND ${CMAKE_COMMAND} -E copy ${LPR_MODEL_FILES} ${LPR_SITE_DIR}/models
         COMMAND ${CMAKE_COMMAND} -E copy ${LPR_SAMPLE_FILES} ${LPR_SITE_DIR}/samples
+        ${LPR_COPY_SAMPLE_VIDEOS}
         DEPENDS lpr_wasm
         VERBATIM)
 endif()

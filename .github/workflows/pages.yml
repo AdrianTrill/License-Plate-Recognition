@@ -68,6 +68,12 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
           cmake --build build --target lpr --parallel
 
+      # Every sample video, decoded by ffmpeg and read by the command line: each must yield the plates it is labeled with.
+      - name: Read the sample videos natively
+        run: |
+          command -v ffmpeg >/dev/null || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg)
+          python tools/check_videos.py build/lpr
+
       # On every sample, the WebAssembly pipeline with ONNX Runtime Web must give the networks the same bytes the native
       # one does, and read the same plates.
       - name: Check the WebAssembly build against the native one

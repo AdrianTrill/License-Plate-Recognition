@@ -23,6 +23,7 @@ if (screenshots) mkdirSync(screenshots, { recursive: true });
 
 const native = new Map(JSON.parse(readFileSync(nativeJson, 'utf8')).map((image) => [basename(image.image), image]));
 const samples = JSON.parse(readFileSync(join(siteDir, 'samples', 'samples.json'), 'utf8'));
+const videos = JSON.parse(readFileSync(join(siteDir, 'samples', 'videos.json'), 'utf8'));
 const { server, url: site } = await serve(siteDir);
 
 const chrome = [
@@ -114,7 +115,7 @@ await check('the page starts, downloads and checks the networks, and reads the f
 await check('every sample reads as labeled, and as the command line reads it', async () => {
   for (const [index, sample] of samples.entries()) {
     const before = await page.$eval('#plates', (node) => node.dataset.read ?? '');
-    await page.click(`.sample:nth-child(${index + 1})`);
+    await page.click(`#samples .sample:nth-child(${index + 1})`);
     await waitForRead(before);
     const read = (await plates()).map((plate) => plate.text);
     for (const label of sample.plates) {
@@ -139,11 +140,11 @@ await check('a plate can be inspected, from the list or the image', async () => 
 });
 
 await check('keys move between samples, open the shortcuts, settings, and theme', async () => {
-  const first = await page.$eval('.sample[aria-selected="true"]', (node) => node.getAttribute('aria-label'));
+  const first = await page.$eval('#samples .sample[aria-selected="true"]', (node) => node.getAttribute('aria-label'));
   const before = await page.$eval('#plates', (node) => node.dataset.read ?? '');
   await page.keyboard.press('ArrowRight');
   await waitForRead(before);
-  const second = await page.$eval('.sample[aria-selected="true"]', (node) => node.getAttribute('aria-label'));
+  const second = await page.$eval('#samples .sample[aria-selected="true"]', (node) => node.getAttribute('aria-label'));
   expect(first !== second, 'ArrowRight opens the next sample');
   await page.keyboard.press('?');
   expect(await page.$eval('#help', (node) => node.open), '? opens the shortcuts');
@@ -160,7 +161,7 @@ await check('keys move between samples, open the shortcuts, settings, and theme'
 
 await check('a stricter threshold reads again and never finds more plates', async () => {
   const opened = await page.$eval('#plates', (node) => node.dataset.read ?? '');
-  await page.click('.sample:nth-child(2)');
+  await page.click('#samples .sample:nth-child(2)');
   await waitForRead(opened);
   const before = (await plates()).length;
   const stamp = await page.$eval('#plates', (node) => node.dataset.read ?? '');
@@ -197,6 +198,42 @@ await check('the camera starts, reads frames, and stops', async () => {
   await shoot('camera');
   await page.click('#camera-toggle');
   expect(await page.$eval('#hud', (node) => node.hidden), 'stopping hides it');
+});
+
+await check('the video mode plays its first sample by itself, and logs the plates it is labeled with', async () => {
+  const [first, second] = videos;
+  await page.keyboard.press('v');
+  await page.waitForFunction(() => !document.querySelector('#hud').hidden, { timeout: 60000 });
+  expect(new URL(page.url()).searchParams.get('video') === first.id, 'the address names the video');
+  // A slow runner's WebAssembly reads every plate too: the video slows down to the reader's pace.
+  await page.waitForFunction(
+    (labels) => {
+      const logged = [...document.querySelectorAll('#plates .plate-card .plate-chip')].map((chip) =>
+        chip.getAttribute('aria-label'),
+      );
+      return labels.every((label) => logged.includes(label));
+    },
+    { timeout: 150000 },
+    first.plates,
+  );
+  const logged = (await plates()).map((plate) => plate.text);
+  expect(new Set(logged).size === logged.length, `each plate once: ${logged.join(', ')}`);
+  const { rate, hud } = await page.evaluate(() => ({
+    rate: document.querySelector('#video').playbackRate,
+    hud: document.querySelector('#hud-stats').textContent,
+  }));
+  expect(rate === 1 || hud.includes('× speed'), `a slowed video shows its speed (${rate}, "${hud}")`);
+  expect(
+    (await page.$eval('#credit', (node) => node.textContent)).includes(first.author),
+    "the video's author is credited",
+  );
+  await shoot('video-sample');
+  if (second) {
+    await page.keyboard.press('ArrowRight');
+    await page.waitForFunction((id) => new URL(location.href).searchParams.get('video') === id, { timeout: 10000 }, second.id);
+    const selected = await page.$eval('#video-samples .sample:nth-child(2)', (node) => node.getAttribute('aria-selected'));
+    expect(selected === 'true', 'ArrowRight opens the next sample video');
+  }
 });
 
 await check('a video is followed by the tracker, and its plates logged once each', async () => {

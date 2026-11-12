@@ -1,6 +1,10 @@
-# Sample photos
+# Samples
 
-Twelve photos from [Wikimedia Commons](https://commons.wikimedia.org), with plates from eight European countries, Brazil, and the United States. Each was scaled to 1280 pixels wide and saved again as a JPEG without its metadata; nothing else was changed. Each stays under its own license, listed below, and the demo credits its author on screen.
+The demo's sample photos and videos, all from [Wikimedia Commons](https://commons.wikimedia.org). Each stays under its own license, listed below, and the demo credits its author on screen.
+
+## Photos
+
+Twelve photos with plates from eight European countries, Brazil, and the United States. Each was scaled to 1280 pixels wide and saved again as a JPEG without its metadata; nothing else was changed.
 
 [`samples.json`](samples.json) lists them for the demo and the checks, with the plates on each as a person reads them: the labels the demo, the native tests, and the site's checks compare readings with.
 
@@ -18,3 +22,18 @@ Twelve photos from [Wikimedia Commons](https://commons.wikimedia.org), with plat
 | [`pl-gdansk.jpg`](pl-gdansk.jpg) | Toyota Aygo, Gdańsk | `GD560TM` | [Andrzej Otrębski](https://commons.wikimedia.org/wiki/File:Gdansk_Toyota_Aygo.jpg) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) |
 | [`br-brasilia.jpg`](br-brasilia.jpg) | A convoy opening a tunnel, Brasília | `REL2D66`, `REL3E32` | [Agência Brasília from Brasília, Brasil](https://commons.wikimedia.org/wiki/File:Governador_Ibaneis_Rocha_entrega_T%C3%BAnel_Rei_Pel%C3%A9,_maior_obra_de_sua_gest%C3%A3o_(52952289062).jpg) | [CC BY 2.0](https://creativecommons.org/licenses/by/2.0) |
 | [`us-california.jpg`](us-california.jpg) | Mercedes-Benz E 63 AMG, California | `6ARX058` | [Andy Rusch from Santa Barbara, USA](https://commons.wikimedia.org/wiki/File:Black_MB_E_63_AMG_rl.jpg) | [CC BY 2.0](https://creativecommons.org/licenses/by/2.0) |
+
+## Videos
+
+Four clips, in [`videos/`](videos), for the demo's video mode. Two are excerpts and two were cropped to where the plates pass, as listed below; all four were encoded again as H.264 at 1280×720, at their own frame rate up to 30 frames a second, without their sound or metadata. Each has a poster frame from the clip for the demo's list.
+
+[`videos.json`](videos.json) lists them, with every plate legible in each: the labels the demo checks its log against, and that [`tools/check_videos.py`](../tools/check_videos.py) requires the command line to report.
+
+| File | Video | What was kept | Plates | Author | License |
+| --- | --- | --- | --- | --- | --- |
+| [`ro-cluj-napoca-traffic.mp4`](videos/ro-cluj-napoca-traffic.mp4) | Traffic on a tram line, Cluj-Napoca, 2012 | 0:08 to 0:20, after the title | `CJ027327`, `B36NWH`, `B35CKA`, `CJ92RSE`, `CJ26BCB`, `CJ01RMM` | [LDEGM Old Channel](https://commons.wikimedia.org/wiki/File:Trams_in_Cluj_Napoca_(15_08_2012).webm) | [CC BY 3.0](https://creativecommons.org/licenses/by/3.0) |
+| [`nl-2cv-parade.mp4`](videos/nl-2cv-parade.mp4) | A Citroën 2CV parade, eastern Netherlands, 2022 | 0:04 to 0:20, cropped from the 1080p version to the 1280×720 at (640, 240), where the cars come closest | `EP7242`, `90YD20`, `AR4597`, `7916NG`, `GL28ZR`, `BE6937`, `PM0187` | [OSeveno](https://commons.wikimedia.org/wiki/File:Multiple_Citro%C3%ABn_2CV_vehicles_driving_by_(east_Netherlands,_2022).webm) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) |
+| [`ro-sibiu-taxi.mp4`](videos/ro-sibiu-taxi.mp4) | A taxi pushed to the station, Sibiu, 2014 | All of it | `SB27RMF`, `B45XNB` | [Draceane](https://commons.wikimedia.org/wiki/File:Sibiu,_taxik%C3%A1%C5%99i_p%C5%99ed_n%C3%A1dra%C5%BE%C3%ADm,_2014.webm) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) |
+| [`fr-lyon-parking.mp4`](videos/fr-lyon-parking.mp4) | Parallel parking at night, Lyon, 2018 | All of it, cropped from the 1080p version to the 1280×720 at (0, 180), around the parking car, and halved to 30 frames a second | `BP843GS` | [Benoît Prieur](https://commons.wikimedia.org/wiki/File:Man%C5%93uvre_de_stationnement_de_type_cr%C3%A9neau_%C3%A0_Lyon_en_janvier_2018.webm) | [CC0](http://creativecommons.org/publicdomain/zero/1.0/deed.en) |
+
+The Cluj-Napoca video was published on YouTube under CC BY 3.0 and imported to Commons, where a reviewer confirmed its license.

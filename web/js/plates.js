@@ -221,32 +221,57 @@ export function renderStages(timings, backend) {
   );
 }
 
-// The plates a camera or video has shown: one entry per tracked plate, newest first, with its best view.
+// The plates a camera or video has shown: one entry per plate text, newest first, with its best view. A plate lost and
+// found again, or whose reading came to match an entry's, joins that entry with its track.
 export class PlateLog {
   constructor(list, { onSelect, onHover }) {
     this.list = list;
-    this.entries = new Map();
+    this.entries = [];
+    this.byTrack = new Map();
+    this.labels = null;
     this.onSelect = onSelect;
     this.onHover = onHover;
   }
 
-  clear() {
-    this.entries.clear();
+  // Empties the log; a sample video's labels, if given, are checked against each plate logged.
+  clear(labels = null) {
+    this.entries = [];
+    this.byTrack.clear();
+    this.labels = labels;
     this.list.replaceChildren();
   }
 
   get size() {
-    return this.entries.size;
+    return this.entries.length;
   }
 
-  // A reported or changed track, with the frame it was read in.
+  // A reported, changed, or ended track, with the frame it was read in (none once it has ended).
   update(track, frame) {
-    let entry = this.entries.get(track.id);
-    if (!entry) {
-      entry = { track, card: null, view: null, best: -1 };
-      this.entries.set(track.id, entry);
+    const previous = this.byTrack.get(track.id);
+    let entry = this.entries.find((other) => other.text === track.text);
+    if (!entry && previous?.tracks.size === 1) {
+      entry = previous;
     }
-    entry.track = track;
+    if (!entry) {
+      entry = { text: track.text, tracks: new Map(), card: null, view: null, best: -1 };
+      this.entries.push(entry);
+    }
+    if (previous && previous !== entry) {
+      previous.tracks.delete(track.id);
+      if (previous.tracks.size > 0) {
+        this.render(previous);
+      } else {
+        if (previous.best > entry.best) {
+          entry.best = previous.best;
+          entry.view = previous.view;
+        }
+        previous.card.remove();
+        this.entries.splice(this.entries.indexOf(previous), 1);
+      }
+    }
+    entry.text = track.text;
+    entry.tracks.set(track.id, track);
+    this.byTrack.set(track.id, entry);
     if (frame && track.confidence > entry.best) {
       entry.best = track.confidence;
       entry.view = thumbnail(frame, [
@@ -259,15 +284,39 @@ export class PlateLog {
     this.render(entry);
   }
 
-  // Marks which logged plates are in view.
-  visible(ids) {
-    for (const [id, entry] of this.entries) {
-      entry.card?.setAttribute('data-live', String(ids.has(id)));
+  // The tracks in view, each frame: a logged plate whose reading of its text has grown surer since it was logged gets
+  // that reading, and a view from this frame.
+  refresh(tracks, frame) {
+    for (const track of tracks) {
+      const entry = this.byTrack.get(track.id);
+      if (entry && track.reported && track.text === entry.text && track.confidence > entry.best + 0.005) {
+        this.update(track, frame);
+      }
     }
   }
 
+  // Marks which logged plates are in view.
+  visible(ids) {
+    for (const entry of this.entries) {
+      const live = [...entry.tracks.keys()].some((id) => ids.has(id));
+      entry.card?.setAttribute('data-live', String(live));
+    }
+  }
+
+  // An entry's most confident reading, and its tracks' reads and times together.
+  static summary(entry) {
+    const tracks = [...entry.tracks.values()];
+    return {
+      reading: tracks.reduce((best, track) => (track.confidence > best.confidence ? track : best)),
+      reads: tracks.reduce((sum, track) => sum + track.reads, 0),
+      first: Math.min(...tracks.map((track) => track.first_seen_ms)),
+      last: Math.max(...tracks.map((track) => track.last_seen_ms)),
+    };
+  }
+
   render(entry) {
-    const { track } = entry;
+    const { reading, reads, first } = PlateLog.summary(entry);
+    const ids = [...entry.tracks.keys()];
     const card = element(
       'li',
       {
@@ -275,9 +324,9 @@ export class PlateLog {
         role: 'option',
         tabindex: 0,
         'data-live': entry.card?.dataset.live ?? 'true',
-        onclick: () => this.onSelect(track.id),
-        onpointerenter: () => this.onHover(track.id),
-        onpointerleave: () => this.onHover(-1),
+        onclick: () => this.onSelect(ids),
+        onpointerenter: () => this.onHover(ids),
+        onpointerleave: () => this.onHover([]),
       },
       element('div', { class: 'plate-crop' }, entry.view ?? thumbnail(null)),
       element(
@@ -286,22 +335,24 @@ export class PlateLog {
         element(
           'div',
           { class: 'plate-line' },
-          plateChip(track),
+          plateChip(reading),
           element('span', {
             class: 'confidence',
-            'data-sure': sureness(track.confidence),
-            text: percent(track.confidence),
+            'data-sure': sureness(reading.confidence),
+            text: percent(reading.confidence),
           }),
         ),
         element(
           'div',
           { class: 'plate-meta' },
-          track.region ? element('span', {}, element('b', { text: track.region.name })) : null,
-          element('span', { class: 'plate-time', text: `${clock(track.first_seen_ms)} · ${track.reads} reads` }),
+          reading.region ? element('span', {}, element('b', { text: reading.region.name })) : null,
+          element('span', { class: 'plate-time', text: `${clock(first)} · ${reads} reads` }),
         ),
+        this.labels ? truth(reading, this.labels) : null,
       ),
     );
     if (entry.card) {
+      card.classList.add('settled');
       entry.card.replaceWith(card);
     } else {
       this.list.prepend(card);
@@ -311,14 +362,15 @@ export class PlateLog {
 
   csv() {
     const rows = [['plate', 'confidence', 'region', 'first_seen_s', 'last_seen_s', 'reads']];
-    for (const { track } of [...this.entries.values()].reverse()) {
+    for (const entry of [...this.entries].reverse()) {
+      const { reading, reads, first, last } = PlateLog.summary(entry);
       rows.push([
-        track.text,
-        track.confidence.toFixed(4),
-        track.region?.name ?? '',
-        (track.first_seen_ms / 1000).toFixed(2),
-        (track.last_seen_ms / 1000).toFixed(2),
-        track.reads,
+        reading.text,
+        reading.confidence.toFixed(4),
+        reading.region?.name ?? '',
+        (first / 1000).toFixed(2),
+        (last / 1000).toFixed(2),
+        reads,
       ]);
     }
     return rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');

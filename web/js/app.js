@@ -1,7 +1,7 @@
 // The page: modes, samples, files, settings, and shortcuts, around the engine (the worker), the viewer, and the sidebar.
 
 import { Engine } from './engine.js';
-import { $, bytes, element, milliseconds, toast } from './format.js';
+import { $, bytes, clock, element, icon, milliseconds, toast } from './format.js';
 import { Live } from './live.js';
 import { PlateLog, renderInspector, renderPlates, renderStages } from './plates.js';
 import { Viewer } from './viewer.js';
@@ -15,6 +15,9 @@ const state = {
   mode: 'photo',
   samples: [],
   sample: -1,
+  videos: [],
+  video: -1, // the sample video playing, or -1 for the visitor's own
+  videoLabels: null,
   photo: null, // { bitmap, result, inputs, labels, credit }
   selected: -1,
   pinned: false,
@@ -27,13 +30,13 @@ const state = {
 const engine = new Engine(base);
 const viewer = new Viewer($('#canvas'), $('#video'));
 const log = new PlateLog($('#plates'), {
-  onSelect: (id) => focusTrack(id),
-  onHover: (id) => viewer.setHover(state.liveTracks.findIndex((track) => track.id === id)),
+  onSelect: (ids) => viewer.setSelected(liveTrack(ids)),
+  onHover: (ids) => viewer.setHover(liveTrack(ids)),
 });
 const live = new Live({ engine, video: $('#video'), onResult: liveResult, onEvents: liveEvents, onState: liveState });
 
 function loadSettings() {
-  const defaults = { threshold: 0.4, iou: 0.45, gpu: true, labels: true };
+  const defaults = { threshold: 0.4, iou: 0.45, gpu: true, labels: true, pacing: true };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem('lpr-settings') ?? '{}') };
   } catch {
@@ -115,9 +118,14 @@ function whenReady(task) {
 /* Samples */
 
 async function loadSamples() {
-  const response = await fetch(`${base}samples/samples.json`);
-  if (!response.ok) return;
-  state.samples = await response.json();
+  const [photos, videos] = await Promise.all([
+    fetch(`${base}samples/samples.json`),
+    fetch(`${base}samples/videos.json`),
+  ]);
+  if (!photos.ok) return;
+  state.samples = await photos.json();
+  state.videos = videos.ok ? await videos.json() : [];
+  renderVideoSamples();
   $('#samples').replaceChildren(
     ...state.samples.map((sample, index) =>
       element(
@@ -135,23 +143,83 @@ async function loadSamples() {
       ),
     ),
   );
-  const requested = new URLSearchParams(location.search).get('sample');
-  const index = Math.max(0, state.samples.findIndex((sample) => sample.id === requested));
-  if (state.samples.length > 0) whenReady(() => openSample(index, { scroll: false }));
+  const params = new URLSearchParams(location.search);
+  const video = state.videos.findIndex((sample) => sample.id === params.get('video'));
+  const index = Math.max(0, state.samples.findIndex((sample) => sample.id === params.get('sample')));
+  if (video >= 0) whenReady(() => openVideoSample(video, { scroll: false }));
+  else if (state.samples.length > 0) whenReady(() => openSample(index, { scroll: false }));
+}
+
+function renderVideoSamples() {
+  $('#video-samples').replaceChildren(
+    ...state.videos.map((sample, index) =>
+      element(
+        'button',
+        {
+          class: 'sample',
+          role: 'option',
+          'aria-selected': 'false',
+          'aria-label': `${sample.title}, ${clock(sample.duration * 1000)}`,
+          title: sample.title,
+          onclick: () => openVideoSample(index),
+        },
+        element('img', { src: `${base}samples/${sample.poster}`, alt: '', loading: 'lazy', decoding: 'async' }),
+        element('span', { class: 'sample-play' }, icon('play')),
+        element('span', { class: 'sample-flag', text: sample.country }),
+        element('span', { class: 'sample-time', text: clock(sample.duration * 1000) }),
+      ),
+    ),
+  );
+}
+
+function setAddress(name, value) {
+  const url = new URL(location.href);
+  for (const key of ['sample', 'video']) url.searchParams.delete(key);
+  if (name) url.searchParams.set(name, value);
+  history.replaceState(null, '', url);
+}
+
+async function openVideoSample(index, { scroll = true } = {}) {
+  const sample = state.videos[index];
+  if (!sample) return;
+  setMode('video', { autoplay: false });
+  state.video = index;
+  document.querySelectorAll('#video-samples .sample').forEach((button, i) => {
+    button.setAttribute('aria-selected', String(i === index));
+    if (i === index && scroll) button.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+  });
+  setAddress('video', sample.id);
+  await playVideo(`${base}samples/${sample.file}`, {
+    labels: sample.plates,
+    credit: { text: `Video: ${sample.author}, ${sample.license}`, href: sample.source },
+  });
+}
+
+// Plays a sample's URL or the visitor's file, with an empty plate log.
+async function playVideo(source, { labels = null, credit = null } = {}) {
+  state.videoLabels = labels;
+  log.clear(labels);
+  state.liveTracks = [];
+  $('#plate-count').textContent = '0';
+  $('#plates-empty').hidden = false;
+  showCredit(credit);
+  try {
+    await live.startVideo(source);
+  } catch (error) {
+    toast(error.message, 'error');
+  }
 }
 
 async function openSample(index, { scroll = true } = {}) {
   const sample = state.samples[index];
   if (!sample) return;
-  setMode('photo');
+  setMode('photo', { autoplay: false });
   state.sample = index;
-  document.querySelectorAll('.sample').forEach((button, i) => {
+  document.querySelectorAll('#samples .sample').forEach((button, i) => {
     button.setAttribute('aria-selected', String(i === index));
     if (i === index && scroll) button.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
   });
-  const url = new URL(location.href);
-  url.searchParams.set('sample', sample.id);
-  history.replaceState(null, '', url);
+  setAddress('sample', sample.id);
   const response = await fetch(`${base}samples/${sample.file}`);
   await readPhoto(await response.blob(), {
     labels: sample.plates,
@@ -271,17 +339,18 @@ function showCredit(credit) {
 
 /* Camera and video */
 
-function liveResult(result, info) {
+function liveResult(result, info, frame) {
   if (state.mode === 'photo') return;
-  if ($('#viewer').dataset.state !== 'live') {
-    $('#viewer').dataset.state = 'live';
+  if (!viewer.live || viewer.source?.width !== info.width || viewer.source?.height !== info.height) {
     viewer.showVideo(info.width, info.height);
   }
   const tracks = result.tracking.tracks.filter((track) => track.visible);
   state.liveTracks = tracks;
   viewer.setPlates(tracks.map((track) => ({ ...track, faded: !track.reported })));
   log.visible(new Set(tracks.map((track) => track.id)));
-  $('#hud-stats').textContent = `${info.fps.toFixed(1)} fps · ${milliseconds(info.latency)}`;
+  log.refresh(tracks, frame);
+  const speed = info.rate < 1 ? ` · ${info.rate.toFixed(2).replace(/0$/, '')}× speed` : '';
+  $('#hud-stats').textContent = `${info.fps.toFixed(1)} fps · ${milliseconds(info.latency)}${speed}`;
   const now = performance.now();
   if (!state.stagesShown || now - state.stagesShown > 400) {
     state.stagesShown = now;
@@ -310,16 +379,18 @@ function liveState({ running, paused, kind, ended, error }) {
   videoToggle.querySelector('span').textContent = ended ? 'Play again' : paused ? 'Play' : 'Pause';
   videoToggle.querySelector('use').setAttribute('href', ended || paused ? '#i-play' : '#i-pause');
   $('#timeline').hidden = kind !== 'video';
-  if (!running && !ended && state.mode !== 'photo') {
+  if (running) {
+    $('#viewer').dataset.state = 'live';
+  } else if (!ended && state.mode !== 'photo') {
     viewer.setPlates([]);
     $('#viewer').dataset.state = 'empty';
   }
   if (error) toast(`Reading stopped: ${error.message}`, 'error');
 }
 
-function focusTrack(id) {
-  const index = state.liveTracks.findIndex((track) => track.id === id);
-  viewer.setSelected(index);
+// Which of the tracks in view is one of these, or -1.
+function liveTrack(ids) {
+  return state.liveTracks.findIndex((track) => ids.includes(track.id));
 }
 
 async function startCamera(facing) {
@@ -334,7 +405,8 @@ async function startCamera(facing) {
 
 /* Modes */
 
-function setMode(mode) {
+// Switches modes; the video mode starts its first sample unless something else is about to play.
+function setMode(mode, { autoplay = true } = {}) {
   if (mode === state.mode) return;
   if (state.mode !== 'photo') live.stop();
   state.mode = mode;
@@ -357,10 +429,9 @@ function setMode(mode) {
       showPhoto({ animate: false });
     } else {
       viewer.clear();
+      if (autoplay && state.samples.length > 0) whenReady(() => openSample(0, { scroll: false }));
     }
-    const url = new URL(location.href);
-    if (state.sample >= 0) url.searchParams.set('sample', state.samples[state.sample].id);
-    history.replaceState(null, '', url);
+    setAddress(state.sample >= 0 ? 'sample' : null, state.samples[state.sample]?.id);
   } else {
     log.clear();
     viewer.clear();
@@ -374,9 +445,10 @@ function setMode(mode) {
         : 'Each plate in the video appears here once, read over all the frames it is in.';
     $('#empty').querySelector('.empty-title').textContent = mode === 'camera' ? 'Start the camera' : 'Open a video';
     renderStages(null);
-    const url = new URL(location.href);
-    url.searchParams.delete('sample');
-    history.replaceState(null, '', url);
+    setAddress(null);
+    state.video = -1;
+    document.querySelectorAll('#video-samples .sample').forEach((button) => button.setAttribute('aria-selected', 'false'));
+    if (mode === 'video' && autoplay && state.videos.length > 0) whenReady(() => openVideoSample(0, { scroll: false }));
   }
   if (mode === 'photo') $('#empty').querySelector('.empty-title').textContent = 'Drop a photo here';
 }
@@ -386,23 +458,17 @@ function setMode(mode) {
 function openFile(file) {
   if (!file) return;
   if (file.type.startsWith('video/')) {
-    setMode('video');
-    whenReady(async () => {
-      try {
-        await live.startVideo(file);
-        $('#video-note').textContent = file.name;
-      } catch (error) {
-        toast(error.message, 'error');
-      }
-    });
+    setMode('video', { autoplay: false });
+    state.video = -1;
+    document.querySelectorAll('#video-samples .sample').forEach((button) => button.setAttribute('aria-selected', 'false'));
+    setAddress(null);
+    whenReady(() => playVideo(file));
     return;
   }
-  setMode('photo');
+  setMode('photo', { autoplay: false });
   state.sample = -1;
-  document.querySelectorAll('.sample').forEach((button) => button.setAttribute('aria-selected', 'false'));
-  const url = new URL(location.href);
-  url.searchParams.delete('sample');
-  history.replaceState(null, '', url);
+  document.querySelectorAll('#samples .sample').forEach((button) => button.setAttribute('aria-selected', 'false'));
+  setAddress(null);
   readPhoto(file);
 }
 
@@ -451,6 +517,10 @@ $('#camera-toggle').addEventListener('click', () => {
 $('#camera-switch').addEventListener('click', () => startCamera(live.facing === 'environment' ? 'user' : 'environment'));
 $('#video-toggle').addEventListener('click', async () => {
   if (!live.running && live.kind === 'video') {
+    // Played again from the start, the tracker numbers its plates from one again, so the log starts over too.
+    log.clear(state.videoLabels);
+    $('#plate-count').textContent = '0';
+    $('#plates-empty').hidden = false;
     live.video.currentTime = 0;
     await live.video.play();
     live.begin('video');
@@ -460,7 +530,10 @@ $('#video-toggle').addEventListener('click', async () => {
 });
 $('#video').addEventListener('timeupdate', () => {
   const video = $('#video');
-  if (video.duration) $('#timeline-fill').style.width = `${(100 * video.currentTime) / video.duration}%`;
+  if (!video.duration) return;
+  const position = (100 * video.currentTime) / video.duration;
+  $('#timeline-fill').style.width = `${position}%`;
+  $('#timeline').setAttribute('aria-valuenow', String(Math.round(position)));
 });
 $('#timeline').addEventListener('click', async (event) => {
   const video = $('#video');
@@ -547,6 +620,13 @@ $('#labels').addEventListener('change', () => {
   saveSettings();
   viewer.setLabels(settings.labels);
 });
+$('#pacing').checked = settings.pacing;
+live.setPacing(settings.pacing);
+$('#pacing').addEventListener('change', () => {
+  settings.pacing = $('#pacing').checked;
+  saveSettings();
+  live.setPacing(settings.pacing);
+});
 
 /* Theme and help */
 
@@ -592,6 +672,10 @@ document.addEventListener('keydown', (event) => {
     openSample((state.sample + 1) % state.samples.length);
   } else if (key === 'ArrowLeft' && state.mode === 'photo' && state.samples.length > 0) {
     openSample((state.sample - 1 + state.samples.length) % state.samples.length);
+  } else if (key === 'ArrowRight' && state.mode === 'video' && state.videos.length > 0) {
+    openVideoSample((state.video + 1) % state.videos.length);
+  } else if (key === 'ArrowLeft' && state.mode === 'video' && state.videos.length > 0) {
+    openVideoSample((Math.max(state.video, 0) - 1 + state.videos.length) % state.videos.length);
   } else if (/^[1-9]$/.test(key) && state.mode === 'photo' && Number(key) <= plates.length) select(Number(key) - 1);
   else if (key === ' ' && state.mode !== 'photo') live.toggle();
   else if (key === 'Escape') {
