@@ -1,0 +1,6 @@
+# Golden results are compared byte for byte, so they keep LF line endings everywhere.
+tests/golden/* text eol=lf
+*.jpg binary
+*.png binary
+*.gif binary
+*.onnx binary

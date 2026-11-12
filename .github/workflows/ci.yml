@@ -1,0 +1,193 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CLANG_FORMAT_VERSION: "22.1.8"
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux / GCC
+            os: ubuntu-latest
+            compiler: -DCMAKE_CXX_COMPILER=g++
+          - name: Linux / Clang
+            os: ubuntu-latest
+            compiler: -DCMAKE_CXX_COMPILER=clang++
+          - name: macOS / Apple Clang
+            os: macos-latest
+            compiler: ""
+          - name: Windows / MSVC
+            os: windows-latest
+            compiler: ""
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+
+      - name: Cache the upstream models
+        uses: actions/cache@v6
+        with:
+          path: .cache/upstream
+          key: upstream-models-${{ hashFiles('tools/prepare_models.py') }}
+
+      # Downloads the pinned releases, cuts the detector's graph, and requires the hashes in models/manifest.json.
+      - name: Prepare the models
+        run: |
+          pip install -r tools/requirements.txt
+          python tools/prepare_models.py --check
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DLPR_WARNINGS_AS_ERRORS=ON ${{ matrix.compiler }}
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      # Unit tests, then the real models on every sample photo.
+      - name: Test
+        run: ctest --test-dir build --build-config Release --output-on-failure
+
+  sanitizers:
+    name: Sanitizers / ASan + UBSan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+
+      - name: Cache the upstream models
+        uses: actions/cache@v6
+        with:
+          path: .cache/upstream
+          key: upstream-models-${{ hashFiles('tools/prepare_models.py') }}
+
+      - name: Prepare the models
+        run: |
+          pip install -r tools/requirements.txt
+          python tools/prepare_models.py
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++
+          -DLPR_WARNINGS_AS_ERRORS=ON -DLPR_SANITIZERS=address,undefined
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:detect_stack_use_after_return=1:check_initialization_order=1:strict_string_checks=1
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/tests/lsan.supp
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build --output-on-failure
+
+  format:
+    name: Format / clang-format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install clang-format
+        run: pip install "clang-format==${CLANG_FORMAT_VERSION}"
+
+      - name: Check formatting
+        run: git ls-files '*.cpp' '*.hpp' | xargs clang-format --dry-run --Werror
+
+  evaluation:
+    name: Evaluation / OpenALPR benchmark
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+
+      - name: Cache the upstream models and the benchmark
+        uses: actions/cache@v6
+        with:
+          path: |
+            .cache/upstream
+            .cache/openalpr-benchmarks
+          key: evaluation-${{ hashFiles('tools/prepare_models.py', 'tools/fetch_benchmark.sh') }}
+
+      - name: Prepare the models
+        run: |
+          pip install -r tools/requirements.txt
+          python tools/prepare_models.py
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build --target lpr --parallel
+
+      # 444 photos from Brazil, Europe, and the United States, each with one labeled plate.
+      - name: Evaluate
+        run: |
+          benchmark=$(tools/fetch_benchmark.sh)
+          ./build/lpr evaluate --threads 1 "$benchmark/br" "$benchmark/eu" "$benchmark/us" --report evaluation.json
+
+      # The README's numbers must come out of a fresh run.
+      - name: Compare with docs/evaluation.json
+        run: |
+          python - <<'EOF'
+          import json
+          measured = json.load(open("evaluation.json"))
+          published = json.load(open("docs/evaluation.json"))
+          for scope in ["total", *published["datasets"]]:
+              a = measured["total"] if scope == "total" else measured["datasets"][scope]
+              b = published["total"] if scope == "total" else published["datasets"][scope]
+              keys = ("images", "plates_found", "read_exactly", "read_exactly_o_as_zero")
+              if any(a[k] != b[k] for k in keys):
+                  raise SystemExit(f"{scope}: measured {[a[k] for k in keys]}, published {[b[k] for k in keys]}")
+          print("The published evaluation reproduces:", {k: measured["total"][k] for k in ("plates_found", "read_exactly")})
+          EOF
+
+      - name: Upload the evaluation
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evaluation
+          path: evaluation.json
+          if-no-files-found: ignore

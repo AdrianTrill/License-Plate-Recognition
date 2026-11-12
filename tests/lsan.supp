@@ -1,0 +1,2 @@
+# ONNX Runtime keeps some allocations until the process exits; they are its own, not the pipeline's.
+leak:libonnxruntime

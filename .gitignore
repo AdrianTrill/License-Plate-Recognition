@@ -1,0 +1,19 @@
+build/
+build-*/
+*.o
+*.obj
+*.exe
+*.dSYM/
+compile_commands.json
+.DS_Store
+.cache/
+.venv/
+__pycache__/
+node_modules/
+
+# The models are prepared from their pinned upstream releases (tools/prepare_models.py) or downloaded from the site.
+models/*.onnx
+
+# Output of `lpr --annotate` and the site's checks.
+annotated/
+site-screenshots/

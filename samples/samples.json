@@ -1,0 +1,186 @@
+[
+  {
+    "id": "ro-cluj-napoca",
+    "file": "ro-cluj-napoca.jpg",
+    "title": "Local police car, Cluj-Napoca",
+    "country": "RO",
+    "plates": [
+      "CJ27CLC"
+    ],
+    "author": "Kyah117",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Politia_Locala_-_Cluj-Napoca_(3).jpg",
+    "width": 1280,
+    "height": 960
+  },
+  {
+    "id": "ro-sibiu",
+    "file": "ro-sibiu.jpg",
+    "title": "A police pickup and a Dacia Duster, Sibiu",
+    "country": "RO",
+    "plates": [
+      "MAI58767",
+      "B108ZJE"
+    ],
+    "author": "Kyah117",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Ford_Politia_-_Bucarest.jpg",
+    "width": 1280,
+    "height": 934
+  },
+  {
+    "id": "ro-turda",
+    "file": "ro-turda.jpg",
+    "title": "Dacia 1310, Turda",
+    "country": "RO",
+    "plates": [
+      "CJ14VXY"
+    ],
+    "author": "TrainSimFan",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:2002_Dacia_1310_in_Turda.jpg",
+    "width": 1280,
+    "height": 960
+  },
+  {
+    "id": "de-golf",
+    "file": "de-golf.jpg",
+    "title": "Volkswagen Golf Variant, Germany",
+    "country": "DE",
+    "plates": [
+      "HHQM8872"
+    ],
+    "author": "Alexander Migl",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Volkswagen_Golf_VIII_Variant_IMG_5348.jpg",
+    "width": 1280,
+    "height": 691
+  },
+  {
+    "id": "gb-captur",
+    "file": "gb-captur.jpg",
+    "title": "Renault Captur, United Kingdom",
+    "country": "GB",
+    "plates": [
+      "AY23XCA"
+    ],
+    "author": "Calreyn88",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:2023_Renault_Captur_RS_Line_TCe.jpg",
+    "width": 1280,
+    "height": 860
+  },
+  {
+    "id": "fr-dieppe",
+    "file": "fr-dieppe.jpg",
+    "title": "Two SUVs, Dieppe",
+    "country": "FR",
+    "plates": [
+      "AA110YP",
+      "AA405TC"
+    ],
+    "author": "Mic from Reading - Berkshire, United Kingdom",
+    "license": "CC BY 2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Dieppe,_Seine-Maritime_-_France_(11399342854).jpg",
+    "width": 1280,
+    "height": 838
+  },
+  {
+    "id": "it-punto",
+    "file": "it-punto.jpg",
+    "title": "Fiat Punto, Italy",
+    "country": "IT",
+    "plates": [
+      "EL333CK"
+    ],
+    "author": "Corvettec6r",
+    "license": "CC0",
+    "license_url": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+    "source": "https://commons.wikimedia.org/wiki/File:2015_Fiat_Punto_5-door_1.4_Natural_Power.jpg",
+    "width": 1280,
+    "height": 960
+  },
+  {
+    "id": "nl-vanquish",
+    "file": "nl-vanquish.jpg",
+    "title": "Aston Martin Vanquish, Netherlands",
+    "country": "NL",
+    "plates": [
+      "GB713F",
+      "G592HD"
+    ],
+    "author": "Rutger van der Maar",
+    "license": "CC BY 2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:2014_Aston_Martin_Vanquish_Volante_5.9_V12_(52055905576).jpg",
+    "width": 1280,
+    "height": 905
+  },
+  {
+    "id": "es-sevilla",
+    "file": "es-sevilla.jpg",
+    "title": "Local police car, Seville",
+    "country": "ES",
+    "plates": [
+      "1512HNC"
+    ],
+    "author": "Nxr-at",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Sevilla_Seville_Local_Policia.jpg",
+    "width": 1280,
+    "height": 854
+  },
+  {
+    "id": "pl-gdansk",
+    "file": "pl-gdansk.jpg",
+    "title": "Toyota Aygo, Gdańsk",
+    "country": "PL",
+    "plates": [
+      "GD560TM"
+    ],
+    "author": "Andrzej Otrębski",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Gdansk_Toyota_Aygo.jpg",
+    "width": 1280,
+    "height": 902
+  },
+  {
+    "id": "br-brasilia",
+    "file": "br-brasilia.jpg",
+    "title": "A convoy opening a tunnel, Brasília",
+    "country": "BR",
+    "plates": [
+      "REL2D66",
+      "REL3E32"
+    ],
+    "author": "Agência Brasília from Brasília, Brasil",
+    "license": "CC BY 2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Governador_Ibaneis_Rocha_entrega_T%C3%BAnel_Rei_Pel%C3%A9,_maior_obra_de_sua_gest%C3%A3o_(52952289062).jpg",
+    "width": 1280,
+    "height": 854
+  },
+  {
+    "id": "us-california",
+    "file": "us-california.jpg",
+    "title": "Mercedes-Benz E 63 AMG, California",
+    "country": "US",
+    "plates": [
+      "6ARX058"
+    ],
+    "author": "Andy Rusch from Santa Barbara, USA",
+    "license": "CC BY 2.0",
+    "license_url": "https://creativecommons.org/licenses/by/2.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Black_MB_E_63_AMG_rl.jpg",
+    "width": 1280,
+    "height": 960
+  }
+]

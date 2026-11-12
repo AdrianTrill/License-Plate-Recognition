@@ -1,0 +1,8 @@
+# tools/prepare_models.py: pinned, so the prepared detector comes out byte for byte the same everywhere.
+certifi==2026.10.23
+numpy==2.5.4
+onnx==1.23.2
+onnxruntime==1.31.1
+pillow==13.0.0
+protobuf==7.36.2
+pyyaml==6.0.3
