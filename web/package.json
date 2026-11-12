@@ -1,0 +1,16 @@
+{
+  "name": "license-plate-recognition-web",
+  "private": true,
+  "description": "The browser demo's runtime, ONNX Runtime Web, and its checks: the WebAssembly build against the native one in Node, and the page in headless Chrome.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "dependencies": {
+    "onnxruntime-web": "1.31.1"
+  },
+  "devDependencies": {
+    "gifenc": "1.0.3",
+    "puppeteer-core": "25.17.0"
+  }
+}

@@ -115,3 +115,50 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
     add_test(NAME lpr_cli_rejects_a_missing_image COMMAND lpr ${PROJECT_SOURCE_DIR}/samples/missing.jpg)
     set_tests_properties(lpr_cli_rejects_a_missing_image PROPERTIES WILL_FAIL TRUE)
 endif()
+
+# The browser demo: the pipeline compiled to WebAssembly, and the page that drives it with ONNX Runtime Web,
+# assembled in site/ for GitHub Pages. Built with emcmake; see .github/workflows/pages.yml.
+if(EMSCRIPTEN)
+    set(LPR_SITE_DIR ${CMAKE_CURRENT_BINARY_DIR}/site)
+    add_executable(lpr_wasm web/lpr_wasm.cpp)
+    target_link_libraries(lpr_wasm PRIVATE lpr_core lpr_options)
+    target_link_options(lpr_wasm PRIVATE
+        -lembind
+        -sMODULARIZE=1
+        -sEXPORT_ES6=1
+        -sEXPORT_NAME=createPipeline
+        -sALLOW_MEMORY_GROWTH=1
+        -sENVIRONMENT=web,worker,node)
+    set_target_properties(lpr_wasm PROPERTIES OUTPUT_NAME lpr SUFFIX .mjs RUNTIME_OUTPUT_DIRECTORY ${LPR_SITE_DIR})
+
+    # The page, its scripts, ONNX Runtime Web (from npm ci --prefix web), the models, and the samples, copied fresh on
+    # every build.
+    file(GLOB LPR_WEB_ASSETS CONFIGURE_DEPENDS
+         ${PROJECT_SOURCE_DIR}/web/index.html ${PROJECT_SOURCE_DIR}/web/style.css ${PROJECT_SOURCE_DIR}/web/favicon.svg
+         ${PROJECT_SOURCE_DIR}/web/social.png)
+    file(GLOB LPR_WEB_SCRIPTS CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/web/js/*.js)
+    file(GLOB LPR_SAMPLE_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/samples/*.jpg ${PROJECT_SOURCE_DIR}/samples/*.json)
+    set(LPR_ORT_DIST ${PROJECT_SOURCE_DIR}/web/node_modules/onnxruntime-web/dist)
+    set(LPR_ORT_FILES
+        ort.wasm.min.mjs ort-wasm-simd-threaded.mjs ort-wasm-simd-threaded.wasm
+        ort.webgpu.min.mjs ort-wasm-simd-threaded.asyncify.mjs ort-wasm-simd-threaded.asyncify.wasm)
+    list(TRANSFORM LPR_ORT_FILES PREPEND ${LPR_ORT_DIST}/)
+    set(LPR_MODEL_FILES detector.onnx recognizer.onnx manifest.json README.md)
+    list(TRANSFORM LPR_MODEL_FILES PREPEND ${PROJECT_SOURCE_DIR}/models/)
+    if(NOT EXISTS ${LPR_ORT_DIST}/ort.wasm.min.mjs)
+        message(WARNING "ONNX Runtime Web is missing: run `npm ci --prefix web` before building lpr_site")
+    endif()
+    if(NOT EXISTS ${PROJECT_SOURCE_DIR}/models/detector.onnx)
+        message(WARNING "The models are missing: run `python tools/prepare_models.py` before building lpr_site")
+    endif()
+    add_custom_target(lpr_site
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+                ${LPR_SITE_DIR}/js ${LPR_SITE_DIR}/ort ${LPR_SITE_DIR}/models ${LPR_SITE_DIR}/samples
+        COMMAND ${CMAKE_COMMAND} -E copy ${LPR_WEB_ASSETS} ${LPR_SITE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy ${LPR_WEB_SCRIPTS} ${LPR_SITE_DIR}/js
+        COMMAND ${CMAKE_COMMAND} -E copy ${LPR_ORT_FILES} ${LPR_SITE_DIR}/ort
+        COMMAND ${CMAKE_COMMAND} -E copy ${LPR_MODEL_FILES} ${LPR_SITE_DIR}/models
+        COMMAND ${CMAKE_COMMAND} -E copy ${LPR_SAMPLE_FILES} ${LPR_SITE_DIR}/samples
+        DEPENDS lpr_wasm
+        VERBATIM)
+endif()

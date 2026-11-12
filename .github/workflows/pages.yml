@@ -1,0 +1,111 @@
+name: Pages
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EMSCRIPTEN_VERSION: "7.0.0"
+
+jobs:
+  build:
+    name: Browser build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+
+      - name: Cache the upstream models
+        uses: actions/cache@v6
+        with:
+          path: .cache/upstream
+          key: upstream-models-${{ hashFiles('tools/prepare_models.py') }}
+
+      # The site serves the same files the command line runs, prepared from the pinned releases.
+      - name: Prepare the models
+        run: |
+          pip install -r tools/requirements.txt
+          python tools/prepare_models.py --check
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install ONNX Runtime Web and the checks' tools
+        run: npm ci --prefix web
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v16
+        with:
+          version: ${{ env.EMSCRIPTEN_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Build the site
+        run: |
+          emcmake cmake -S . -B build-wasm -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DLPR_WARNINGS_AS_ERRORS=ON
+          cmake --build build-wasm --target lpr_site --parallel
+
+      - name: Build the command line
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build --target lpr --parallel
+
+      # On every sample, the WebAssembly pipeline with ONNX Runtime Web must give the networks the same bytes the native
+      # one does, and read the same plates.
+      - name: Check the WebAssembly build against the native one
+        run: node web/check.mjs build-wasm/site build/lpr samples/*.jpg
+
+      # The page itself, in the runner's Chrome: it must start without errors, read every sample as labeled and as the
+      # command line does, answer its keys and settings, follow a video's plates, and fit a phone's screen.
+      - name: Check the site in headless Chrome
+        run: |
+          ./build/lpr --json samples/*.jpg > native.json
+          node web/ui-check.mjs build-wasm/site native.json --screenshots site-screenshots
+
+      - name: Upload the site's screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: site-screenshots
+          path: site-screenshots/
+          if-no-files-found: ignore
+
+      - name: Upload the site
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build-wasm/site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

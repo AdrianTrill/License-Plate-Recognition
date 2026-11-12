@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>License Plate Recognition · in your browser</title>
+  <meta name="description" content="Read license plates in photos, videos, and your camera, entirely in the page: a YOLOv9 detector and a plate reader on ONNX Runtime Web, with a C++ pipeline compiled to WebAssembly.">
+  <meta name="theme-color" content="#07090d">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="License Plate Recognition">
+  <meta property="og:title" content="License Plate Recognition · read in your browser">
+  <meta property="og:description" content="A YOLOv9 plate detector and a plate reader for 65 countries, with a C++ pipeline compiled to WebAssembly. Photos, videos, and your camera, read on your own device.">
+  <meta property="og:url" content="https://adriantrill.github.io/License-Plate-Recognition/">
+  <meta property="og:image" content="https://adriantrill.github.io/License-Plate-Recognition/social.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="License Plate Recognition: a street photo with its plates outlined and read, beside the plates' readings with their confidence">
+  <meta name="twitter:card" content="summary_large_image">
+  <script>
+    try {
+      if (localStorage.getItem('lpr-theme') === 'light') {
+        document.documentElement.dataset.theme = 'light';
+        document.querySelector('meta[name="theme-color"]').content = '#f4f6fa';
+      }
+    } catch {
+      // Without storage, the page keeps its dark theme.
+    }
+  </script>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="i-photo" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="10" r="1.7" fill="currentColor"/><path d="m5.5 17 4.6-4.6a1.2 1.2 0 0 1 1.7 0L14 14.6l1.6-1.6a1.2 1.2 0 0 1 1.7 0l2.2 2.2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.3l1.2-1.8A1.5 1.5 0 0 1 10.2 3.5h3.6a1.5 1.5 0 0 1 1.2.7L16.2 6h1.3A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12.3" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 10.5 4.2-2.6a.6.6 0 0 1 .9.5v7.2a.6.6 0 0 1-.9.5L16 13.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15.5V4.5m0 0L7.8 8.7M12 4.5l4.2 4.2M5 14.5v2A2.5 2.5 0 0 0 7.5 19h9a2.5 2.5 0 0 0 2.5-2.5v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9m4 0h3M4 17h3m4 0h9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="15" cy="7" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="17" r="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5l1.5 1.5M17 17l1.5 1.5M5.5 18.5 7 17M17 7l1.5-1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.6A7.8 7.8 0 0 1 9.4 4.5a7.8 7.8 0 1 0 10.1 10.1Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.8" y="6" width="18.4" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2.6a9.4 9.4 0 0 0-3 18.3c.5.1.6-.2.6-.5v-1.7c-2.6.6-3.2-1.2-3.2-1.2-.4-1.1-1-1.4-1-1.4-.9-.6 0-.6 0-.6 1 .1 1.5 1 1.5 1 .8 1.5 2.2 1 2.8.8.1-.6.3-1 .6-1.3-2.1-.2-4.3-1-4.3-4.6 0-1 .4-1.9 1-2.5-.1-.3-.4-1.2.1-2.5 0 0 .8-.3 2.6 1a9 9 0 0 1 4.7 0c1.8-1.3 2.6-1 2.6-1 .5 1.3.2 2.2.1 2.5.6.6 1 1.5 1 2.5 0 3.6-2.2 4.4-4.3 4.6.3.3.6.9.6 1.8v2.6c0 .3.2.6.6.5A9.4 9.4 0 0 0 12 2.6Z" fill="currentColor"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.6v12.8a1 1 0 0 0 1.5.86l10.6-6.4a1 1 0 0 0 0-1.72L9.5 4.74A1 1 0 0 0 8 5.6Z" fill="currentColor"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="5" width="4.2" height="14" rx="1.2" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2" fill="currentColor"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor"/></symbol>
+    <symbol id="i-switch" viewBox="0 0 24 24"><path d="M4.5 9.5h13.2l-3-3M19.5 14.5H6.3l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4.5v11m0 0 4.2-4.2M12 15.5l-4.2-4.2M5 19.5h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6.5 6.5 11 11m0-11-11 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5.5 12.5 4.2 4.2 8.8-9.4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-cross" viewBox="0 0 24 24"><path d="m7 7 10 10m0-10L7 17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.5 3.5v3M14.5 3.5v3M9.5 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 14.5h3M17.5 9.5h3M17.5 14.5h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  </svg>
+
+  <header class="topbar">
+    <a class="brand" href="./" aria-label="License Plate Recognition, home">
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="logo-gradient" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#3ddc97"/>
+            <stop offset="1" stop-color="#22c3ee"/>
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="8" fill="url(#logo-gradient)"/>
+        <rect x="6" y="11" width="20" height="10" rx="2.2" fill="#07130f" opacity=".92"/>
+        <path d="M9 14.2h2.6M9 17.8h2.6M13.4 14.2v3.6M15.6 14.2h2.2v1.8h-2.2v1.8h2.2M20.2 14.2h2.6v3.6h-2.6" fill="none" stroke="#3ddc97" stroke-width="1.3" stroke-linecap="round"/>
+        <path d="M4.5 9V6.6c0-1.2.9-2.1 2.1-2.1H9M23 4.5h2.4c1.2 0 2.1.9 2.1 2.1V9M27.5 23v2.4c0 1.2-.9 2.1-2.1 2.1H23M9 27.5H6.6c-1.2 0-2.1-.9-2.1-2.1V23" fill="none" stroke="#07130f" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span class="brand-text"><span class="brand-name">License Plate</span> <span class="brand-sub">Recognition</span></span>
+    </a>
+
+    <nav class="modes" role="tablist" aria-label="What to read">
+      <button class="mode" role="tab" data-mode="photo" aria-selected="true" title="Photos (P)"><svg><use href="#i-photo"/></svg><span>Photo</span></button>
+      <button class="mode" role="tab" data-mode="camera" aria-selected="false" title="Camera (C)"><svg><use href="#i-camera"/></svg><span>Camera</span></button>
+      <button class="mode" role="tab" data-mode="video" aria-selected="false" title="Video (V)"><svg><use href="#i-video"/></svg><span>Video</span></button>
+    </nav>
+
+    <div class="topbar-actions">
+      <span class="runtime" id="runtime" title="Where the networks run"><span class="runtime-dot"></span><span id="runtime-label">Loading</span></span>
+      <button class="icon-button" id="settings-button" aria-label="Settings" aria-expanded="false" title="Settings (S)"><svg><use href="#i-settings"/></svg></button>
+      <button class="icon-button" id="theme-button" aria-label="Switch theme" title="Theme (T)"><svg><use href="#i-sun"/></svg></button>
+      <button class="icon-button" id="help-button" aria-label="Keyboard shortcuts" title="Shortcuts (?)"><svg><use href="#i-keyboard"/></svg></button>
+      <a class="icon-button" href="https://github.com/AdrianTrill/License-Plate-Recognition" aria-label="Source on GitHub" title="Source on GitHub" target="_blank" rel="noopener"><svg><use href="#i-github"/></svg></a>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="stage" aria-label="Viewer">
+      <div class="viewer" id="viewer" data-state="empty">
+        <video id="video" playsinline muted></video>
+        <canvas id="canvas" aria-label="The image, with its plates outlined"></canvas>
+        <div class="viewer-empty" id="empty">
+          <div class="empty-mark"><svg><use href="#i-upload"/></svg></div>
+          <p class="empty-title">Drop a photo here</p>
+          <p class="empty-hint">or open one, paste one, or pick a sample below. It is read on this device; nothing is uploaded.</p>
+        </div>
+        <div class="viewer-busy" id="busy" hidden><span class="scanline"></span></div>
+        <a class="credit" id="credit" target="_blank" rel="noopener" hidden></a>
+        <div class="hud" id="hud" hidden>
+          <span class="hud-live"><span class="hud-dot"></span><span id="hud-label">Live</span></span>
+          <span id="hud-stats"></span>
+        </div>
+        <div class="loading" id="loading">
+          <div class="loading-card">
+            <p class="loading-title" id="loading-title">Starting</p>
+            <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+            <p class="loading-detail" id="loading-detail">ONNX Runtime Web, the pipeline, and two networks</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tray" id="tray">
+        <div class="tray-photo" data-for="photo">
+          <button class="button primary" id="open-photo"><svg><use href="#i-upload"/></svg>Open a photo</button>
+          <div class="samples" id="samples" role="listbox" aria-label="Sample photos"></div>
+        </div>
+        <div class="tray-live" data-for="camera" hidden>
+          <button class="button primary" id="camera-toggle"><svg><use href="#i-camera"/></svg><span>Start the camera</span></button>
+          <button class="button" id="camera-switch" hidden><svg><use href="#i-switch"/></svg>Switch camera</button>
+          <p class="tray-note">Point it at a plate a few meters away. Frames are read on this device and never leave it.</p>
+        </div>
+        <div class="tray-live" data-for="video" hidden>
+          <button class="button primary" id="open-video"><svg><use href="#i-upload"/></svg>Open a video</button>
+          <button class="button" id="video-toggle" hidden><svg><use href="#i-pause"/></svg><span>Pause</span></button>
+          <div class="timeline" id="timeline" hidden><div class="timeline-fill" id="timeline-fill"></div></div>
+          <span class="tray-note" id="video-note">MP4 or WebM: dashcams, gates, and parking lots work best.</span>
+        </div>
+      </div>
+    </section>
+
+    <aside class="sidebar">
+      <section class="panel plates-panel" aria-labelledby="plates-title">
+        <header class="panel-header">
+          <h2 id="plates-title">Plates</h2>
+          <span class="count" id="plate-count">0</span>
+          <span class="panel-spacer"></span>
+          <button class="text-button" id="export-button" hidden><svg><use href="#i-download"/></svg>CSV</button>
+          <button class="text-button" id="copy-link" title="Copy a link to this sample"><svg><use href="#i-link"/></svg>Link</button>
+        </header>
+        <ol class="plates" id="plates" aria-live="polite"></ol>
+        <p class="plates-empty" id="plates-empty">The plates the reader finds appear here, with how sure it is of each character.</p>
+      </section>
+
+      <section class="panel inspector" id="inspector" aria-labelledby="inspector-title" hidden>
+        <header class="panel-header">
+          <h2 id="inspector-title">What the reader saw</h2>
+          <span class="panel-spacer"></span>
+          <span class="panel-note" id="inspector-note"></span>
+        </header>
+        <div class="inspector-body">
+          <canvas class="network-input" id="network-input" width="256" height="128" aria-label="The plate as the reader receives it: 128 by 64 pixels"></canvas>
+          <div class="slots" id="slots"></div>
+        </div>
+      </section>
+
+      <section class="panel pipeline" aria-labelledby="pipeline-title">
+        <header class="panel-header">
+          <h2 id="pipeline-title">Pipeline</h2>
+          <span class="panel-spacer"></span>
+          <span class="panel-note" id="pipeline-total"></span>
+        </header>
+        <div class="stages" id="stages"></div>
+        <ul class="facts">
+          <li><svg><use href="#i-chip"/></svg><span id="fact-runtime">ONNX Runtime Web</span></li>
+          <li><svg><use href="#i-lock"/></svg><span>Everything runs in this page: images and frames never leave your device.</span></li>
+        </ul>
+      </section>
+    </aside>
+  </main>
+
+  <div class="settings" id="settings" role="dialog" aria-label="Settings" hidden>
+    <label class="setting">
+      <span class="setting-label">Detection threshold <output id="threshold-value">0.40</output></span>
+      <input type="range" id="threshold" min="0.1" max="0.9" step="0.05" value="0.4">
+      <span class="setting-hint">How sure the detector must be that a box holds a plate.</span>
+    </label>
+    <label class="setting">
+      <span class="setting-label">Overlap limit <output id="iou-value">0.45</output></span>
+      <input type="range" id="iou" min="0.2" max="0.8" step="0.05" value="0.45">
+      <span class="setting-hint">Boxes overlapping a better one by more than this are dropped.</span>
+    </label>
+    <label class="setting toggle">
+      <input type="checkbox" id="gpu" checked>
+      <span class="setting-label">Use WebGPU when available</span>
+    </label>
+    <label class="setting toggle">
+      <input type="checkbox" id="labels" checked>
+      <span class="setting-label">Label plates on the image</span>
+    </label>
+  </div>
+
+  <dialog class="dialog" id="help">
+    <header class="dialog-header">
+      <h2>Keyboard shortcuts</h2>
+      <button class="icon-button" data-close aria-label="Close"><svg><use href="#i-close"/></svg></button>
+    </header>
+    <dl class="shortcuts">
+      <dt><kbd>P</kbd> <kbd>C</kbd> <kbd>V</kbd></dt><dd>Photo, camera, or video</dd>
+      <dt><kbd>O</kbd></dt><dd>Open a photo or a video</dd>
+      <dt><kbd>Ctrl</kbd> <kbd>V</kbd></dt><dd>Read a photo from the clipboard</dd>
+      <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next sample</dd>
+      <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Select a plate</dd>
+      <dt><kbd>Space</kbd></dt><dd>Pause or resume the camera or video</dd>
+      <dt><kbd>L</kbd></dt><dd>Show or hide the labels on the image</dd>
+      <dt><kbd>S</kbd></dt><dd>Settings</dd>
+      <dt><kbd>T</kbd></dt><dd>Light or dark theme</dd>
+      <dt><kbd>?</kbd></dt><dd>This list</dd>
+    </dl>
+    <p class="dialog-note">The detector is <a href="https://github.com/ankandrew/open-image-models" target="_blank" rel="noopener">open-image-models</a>' YOLOv9-t, the reader <a href="https://github.com/ankandrew/fast-plate-ocr" target="_blank" rel="noopener">fast-plate-ocr</a>'s CCT-S. Sample photos come from Wikimedia Commons; their authors and licenses are listed with each one.</p>
+  </dialog>
+
+  <input type="file" id="photo-input" accept="image/*" hidden>
+  <input type="file" id="video-input" accept="video/*" hidden>
+  <div class="drop" id="drop" hidden><div class="drop-card"><svg><use href="#i-upload"/></svg>Drop to read the plates</div></div>
+  <div class="toasts" id="toasts" aria-live="assertive"></div>
+</body>
+</html>
