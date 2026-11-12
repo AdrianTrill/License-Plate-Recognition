@@ -1,0 +1,175 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <!-- The link preview, 1200 x 630: web/capture.mjs fills in screenshots of the running site and saves it as social.png. -->
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      position: relative;
+      width: 1200px;
+      height: 630px;
+      margin: 0;
+      overflow: hidden;
+      background:
+        radial-gradient(720px 440px at 6% -12%, rgba(61, 220, 151, 0.16), transparent 70%),
+        radial-gradient(640px 460px at 102% 112%, rgba(34, 195, 238, 0.14), transparent 70%),
+        #07090d;
+      color: #e8edf4;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Inter, Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .grid {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.045) 1px, transparent 1px);
+      background-size: 32px 32px;
+      mask-image: radial-gradient(820px 520px at 28% 50%, black, transparent 80%);
+    }
+    .text {
+      position: absolute;
+      top: 62px;
+      left: 64px;
+      width: 470px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 24px;
+      font-weight: 680;
+      letter-spacing: -0.01em;
+    }
+    .brand svg {
+      width: 50px;
+      height: 50px;
+    }
+    .brand small {
+      display: block;
+      margin-top: 2px;
+      color: #7d8a9d;
+      font-size: 14px;
+      font-weight: 450;
+      letter-spacing: 0;
+    }
+    h1 {
+      margin: 44px 0 0;
+      font-size: 54px;
+      font-weight: 760;
+      line-height: 1.04;
+      letter-spacing: -0.035em;
+    }
+    h1 span {
+      background: linear-gradient(90deg, #3ddc97, #22c3ee 70%, #a5f3fc);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    p {
+      margin: 24px 0 0;
+      color: #b1bccb;
+      font-size: 19.5px;
+      line-height: 1.45;
+    }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 9px;
+      margin-top: 26px;
+    }
+    .chips span {
+      padding: 7px 13px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 999px;
+      background: rgba(21, 27, 35, 0.8);
+      color: #d4dde7;
+      font-size: 15px;
+    }
+    .url {
+      position: absolute;
+      left: 64px;
+      bottom: 50px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #8ee6bf;
+      font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+      font-size: 17px;
+    }
+    .url i {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #3ddc97;
+      box-shadow: 0 0 12px #3ddc97;
+    }
+    .frame {
+      position: absolute;
+      top: 70px;
+      left: 572px;
+      width: 700px;
+      height: 494px;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 18px;
+      background: #05070a;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+    }
+    .frame img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: var(--focus, 50% 60%);
+    }
+    .panel {
+      position: absolute;
+      right: 34px;
+      bottom: 36px;
+      width: 340px;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 16px;
+      background: rgba(13, 17, 23, 0.9);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(10px);
+    }
+    .panel img {
+      display: block;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="text">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#3ddc97"/>
+            <stop offset="1" stop-color="#22c3ee"/>
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="8" fill="url(#g)"/>
+        <rect x="6" y="11" width="20" height="10" rx="2.2" fill="#07130f" opacity=".92"/>
+        <path d="M9 14.2h2.6M9 17.8h2.6M13.4 14.2v3.6M15.6 14.2h2.2v1.8h-2.2v1.8h2.2M20.2 14.2h2.6v3.6h-2.6" fill="none" stroke="#3ddc97" stroke-width="1.3" stroke-linecap="round"/>
+        <path d="M4.5 9V6.6c0-1.2.9-2.1 2.1-2.1H9M23 4.5h2.4c1.2 0 2.1.9 2.1 2.1V9M27.5 23v2.4c0 1.2-.9 2.1-2.1 2.1H23M9 27.5H6.6c-1.2 0-2.1-.9-2.1-2.1V23" fill="none" stroke="#07130f" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <div>License Plate Recognition<small>in your browser</small></div>
+    </div>
+    <h1>License plates,<br><span>read on your device</span></h1>
+    <p>YOLOv9 finds them and a transformer reads them, with a C++ pipeline compiled to WebAssembly. Photos, videos, and your camera.</p>
+    <div class="chips">
+      <span>C++20</span><span>WebAssembly</span><span>ONNX Runtime Web</span><span>WebGPU</span><span>65 countries</span>
+    </div>
+  </div>
+  <div class="url"><i></i>adriantrill.github.io/License-Plate-Recognition</div>
+  <div class="frame"><img id="viewer" alt=""></div>
+  <div class="panel"><img id="plates" alt=""></div>
+</body>
+</html>
