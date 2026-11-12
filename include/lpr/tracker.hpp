@@ -10,10 +10,11 @@
 namespace lpr {
 
 struct TrackerOptions {
-    float match_iou = 0.1F;       // least overlap between a track's predicted box and a detection that continues it
-    double max_gap_ms = 1000.0;   // a track unseen for this long has left
-    int min_reads = 3;            // reads before a track is reported
-    float min_confidence = 0.6F;  // the fused reading's confidence before a track is reported
+    float match_iou = 0.1F;          // least overlap between a track's predicted box and a detection that continues it
+    double max_gap_ms = 1000.0;      // a track unseen for this long has left
+    int min_reads = 3;               // reads before a track is reported
+    float min_confidence = 0.6F;     // the fused reading's confidence before it is reported
+    std::size_t min_characters = 4;  // shorter readings are partial plates, so they are followed but never reported
 };
 
 // A plate followed across frames, with its reads fused into one.
@@ -21,6 +22,7 @@ struct Track {
     int id = 0;
     Box box;         // where it was last seen
     PlateRead read;  // every read so far, fused: per-slot probabilities averaged, weighted by each read's confidence
+                     // (an ended track carries its text's most confident reading instead)
     int seen = 0;    // frames it was detected in
     int reads = 0;   // frames whose reading was fused: those where the plate was clear of the frame's edges
     double first_seen_ms = 0.0;
@@ -32,8 +34,8 @@ struct Track {
 
 enum class TrackEventKind : std::uint8_t {
     reported,  // a track has its first confident reading
-    changed,   // a reported track's text changed as more reads came in
-    ended,     // a reported track left
+    changed,   // a reported track has another confident reading, with other text
+    ended,     // a reported track left, with its text's most confident reading
 };
 
 struct TrackEvent {
@@ -84,11 +86,13 @@ private:
         std::vector<Reads> by_length;
         float velocity_x = 0.0F;  // the box center's, in pixels per millisecond
         float velocity_y = 0.0F;
-        std::string reported_text;
+        PlateRead reported;  // the reported text's most confident reading
     };
 
     void absorb(std::size_t index, const PlateResult& plate, double timestamp_ms, bool readable);
     [[nodiscard]] Box predicted(std::size_t index, double timestamp_ms) const noexcept;
+    [[nodiscard]] bool confident(const PlateRead& read) const noexcept;
+    [[nodiscard]] Track ending(std::size_t index) const;
 
     TrackerOptions options_;
     const RecognizerConfig* config_;

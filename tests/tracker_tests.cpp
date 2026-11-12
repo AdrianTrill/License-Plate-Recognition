@@ -1,5 +1,6 @@
 #include "lpr/tracker.hpp"
 
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -152,6 +153,55 @@ int main() {
              }
              expect_equal(log, std::string("reported:B108ZJE"), "only whole plates are read");
              expect_equal(tracker.tracks()[0].reads, 3, "reads");
+         }},
+        {"partial readings are never reported",
+         [] {
+             lpr::PlateTracker tracker;
+             std::string log;
+             for (int i = 0; i < 6; ++i) {
+                 log = kinds(tracker.update(frame({plate_at(200, 300, reading("68", 0.99F))}), 33.0 * i), log);
+             }
+             log = kinds(tracker.finish(), log);
+             expect_equal(log, std::string(""), "two characters are followed, not reported");
+         }},
+        {"a reported reading gives way only to another confident one, and the track ends with it",
+         [] {
+             lpr::PlateTracker tracker;
+             std::string log;
+             for (int i = 0; i < 3; ++i) {
+                 log = kinds(tracker.update(frame({plate_at(200, 300, reading("SB27RMF", 0.99F))}), 33.0 * i), log);
+             }
+             // As the car turns away, only part of its plate reads, many times over.
+             for (int i = 3; i < 12; ++i) {
+                 log = kinds(tracker.update(frame({plate_at(200, 300, reading("SBF", 0.99F))}), 33.0 * i), log);
+             }
+             expect_equal(tracker.tracks()[0].read.text, std::string("SBF"), "the fused reading is partial now");
+             log = kinds(tracker.finish(), log);
+             expect_equal(log, std::string("reported:SB27RMF ended:SB27RMF"), "events");
+         }},
+        {"a track ends with its text's most confident reading, not the first or the last",
+         [] {
+             lpr::PlateTracker tracker;
+             std::vector<lpr::TrackEvent> events;
+             float peak = 0.0F;
+             // Far away, the plate reads just confidently enough to be reported; closer, it reads sharply; leaving,
+             // it blurs again, and its fused reading grows less sure.
+             for (int i = 0; i < 24; ++i) {
+                 const float sureness = (i < 3 || i >= 12) ? 0.955F : 0.999F;
+                 for (lpr::TrackEvent& event :
+                      tracker.update(frame({plate_at(200, 300, reading("CJ01RMM", sureness))}), 33.0 * i)) {
+                     events.push_back(event);
+                 }
+                 peak = std::max(peak, tracker.tracks()[0].read.confidence);
+             }
+             expect(tracker.tracks()[0].read.confidence < peak, "the blurred reads lowered the fused reading");
+             for (lpr::TrackEvent& event : tracker.finish()) {
+                 events.push_back(event);
+             }
+             expect_equal(kinds(events), std::string("reported:CJ01RMM ended:CJ01RMM"), "events");
+             expect(events[0].track.read.confidence < 0.7F, "reported as soon as it was confident");
+             expect(events[1].track.read.confidence == peak, "ended with its most confident reading");
+             expect(peak > 0.85F, "which fused the sharp reads in");
          }},
         {"finishing ends every reported track",
          [] {

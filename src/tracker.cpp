@@ -42,6 +42,17 @@ const char* to_string(TrackEventKind kind) noexcept {
 PlateTracker::PlateTracker(TrackerOptions options, const RecognizerConfig& config)
     : options_(options), config_(&config) {}
 
+bool PlateTracker::confident(const PlateRead& read) const noexcept {
+    return read.confidence >= options_.min_confidence && read.text.size() >= options_.min_characters;
+}
+
+// A track as it ends: with its text's most confident reading, which the frames as it left may have blurred.
+Track PlateTracker::ending(std::size_t index) const {
+    Track track = tracks_[index];
+    track.read = fusions_[index].reported;
+    return track;
+}
+
 void PlateTracker::reset() {
     tracks_.clear();
     fusions_.clear();
@@ -207,15 +218,21 @@ std::vector<TrackEvent> PlateTracker::update(const FrameResult& frame, double ti
         if (!track.visible || track.read.text.empty()) {
             continue;
         }
+        // A reported track keeps its text's most confident reading. Only another confident reading changes the text,
+        // and the track is reported again when it does.
         if (!track.reported) {
-            if (track.reads >= options_.min_reads && track.read.confidence >= options_.min_confidence) {
+            if (track.reads >= options_.min_reads && confident(track.read)) {
                 track.reported = true;
-                fusion.reported_text = track.read.text;
+                fusion.reported = track.read;
                 events.push_back(TrackEvent{TrackEventKind::reported, track});
             }
-        } else if (track.read.text != fusion.reported_text) {
-            fusion.reported_text = track.read.text;
-            events.push_back(TrackEvent{TrackEventKind::changed, track});
+        } else if (confident(track.read)) {
+            if (track.read.text != fusion.reported.text) {
+                fusion.reported = track.read;
+                events.push_back(TrackEvent{TrackEventKind::changed, track});
+            } else if (track.read.confidence > fusion.reported.confidence) {
+                fusion.reported = track.read;
+            }
         }
     }
 
@@ -223,7 +240,7 @@ std::vector<TrackEvent> PlateTracker::update(const FrameResult& frame, double ti
     for (std::size_t i = 0; i < tracks_.size(); ++i) {
         if (timestamp_ms - tracks_[i].last_seen_ms > options_.max_gap_ms) {
             if (tracks_[i].reported) {
-                events.push_back(TrackEvent{TrackEventKind::ended, tracks_[i]});
+                events.push_back(TrackEvent{TrackEventKind::ended, ending(i)});
             }
             continue;
         }
@@ -240,9 +257,9 @@ std::vector<TrackEvent> PlateTracker::update(const FrameResult& frame, double ti
 
 std::vector<TrackEvent> PlateTracker::finish() {
     std::vector<TrackEvent> events;
-    for (const Track& track : tracks_) {
-        if (track.reported) {
-            events.push_back(TrackEvent{TrackEventKind::ended, track});
+    for (std::size_t i = 0; i < tracks_.size(); ++i) {
+        if (tracks_[i].reported) {
+            events.push_back(TrackEvent{TrackEventKind::ended, ending(i)});
         }
     }
     tracks_.clear();
