@@ -84,7 +84,6 @@ int main() {
          }},
         {"plates read together read as they do alone",
          [&] {
-             lpr::Pipeline pipeline;
              std::vector<std::uint8_t> batch;
              std::size_t count = 0;
              for (const auto& [file, plates] : kSamples) {

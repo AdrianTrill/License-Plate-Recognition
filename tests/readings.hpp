@@ -27,8 +27,8 @@ inline std::vector<float> slots(std::string_view text,
                 symbol == index ? confidence : (1.0F - confidence) / static_cast<float>(symbols - 1);
         }
         if (slot == blurred_slot) {
-            probabilities[(slot * symbols) + config.alphabet.find(blurred_as)] = confidence;
-            probabilities[(slot * symbols) + index] = 0.3F;
+            probabilities.at((slot * symbols) + config.alphabet.find(blurred_as)) = confidence;
+            probabilities.at((slot * symbols) + index) = 0.3F;
         }
     }
     return probabilities;

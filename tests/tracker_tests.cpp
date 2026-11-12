@@ -47,8 +47,9 @@ int main() {
              lpr::PlateTracker tracker;
              std::string log;
              for (int i = 0; i < 8; ++i) {
-                 const auto events =
-                     tracker.update(frame({plate_at(100.0F + (10.0F * i), 300, reading("CJ12ABC", 0.99F))}), 33.0 * i);
+                 const auto events = tracker.update(
+                     frame({plate_at(100.0F + (10.0F * static_cast<float>(i)), 300, reading("CJ12ABC", 0.99F))}),
+                     33.0 * i);
                  log = kinds(events, log);
                  expect_equal(tracker.tracks().size(), std::size_t{1}, "one track");
                  expect_equal(tracker.tracks()[0].id, 1, "the same track");

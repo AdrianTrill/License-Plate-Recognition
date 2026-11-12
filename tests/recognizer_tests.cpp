@@ -67,8 +67,8 @@ int main() {
              std::vector<float> probabilities = readings::slots("B", 0.6F);
              const std::size_t eight = config.alphabet.find('8');
              const std::size_t d = config.alphabet.find('D');
-             probabilities[eight] = 0.3F;
-             probabilities[d] = 0.05F;
+             probabilities.at(eight) = 0.3F;
+             probabilities.at(d) = 0.05F;
              const lpr::PlateRead read = lpr::decode_plate(probabilities, {}, config);
              expect_equal(read.text, std::string("B"), "text");
              expect_equal(read.characters[0].alternatives[0].character, '8', "the runner-up");
@@ -91,9 +91,9 @@ int main() {
              for (std::size_t slot = 0; slot < 10; ++slot) {
                  probabilities[(slot * 37) + 36] = 1.0F;
              }
-             probabilities[config.alphabet.find('O')] = 0.5F;
-             probabilities[config.alphabet.find('0')] = 0.5F;
-             probabilities[36] = 0.0F;
+             probabilities.at(config.alphabet.find('O')) = 0.5F;
+             probabilities.at(config.alphabet.find('0')) = 0.5F;
+             probabilities.at(36) = 0.0F;
              expect_equal(lpr::decode_plate(probabilities, {}, config).text, std::string("0"), "0 comes before O");
          }},
         {"outputs of the wrong size are rejected",
