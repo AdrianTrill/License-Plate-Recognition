@@ -432,7 +432,7 @@ await check('a video is read where video frames carry no time, as in Safari and 
   }
 });
 
-await check('a video is saved with its plates drawn on it, as an MP4 the browser plays', async () => {
+await check("a video is saved with its plates drawn on it, as an MP4 the browser plays at the video's speed", async () => {
   // The shortest sample, played through once while it is saved; the file downloads when the video ends.
   const sample = [...videos].sort((a, b) => a.duration - b.duration)[0];
   const downloads = mkdtempSync(join(tmpdir(), 'lpr-saved-'));
@@ -448,6 +448,8 @@ await check('a video is saved with its plates drawn on it, as an MP4 the browser
     await other.setViewport({ width: 1280, height: 800 });
     await other.goto(`${site}?video=${sample.id}`, { waitUntil: 'load' });
     await other.waitForFunction(() => !document.querySelector('#video-save').hidden, { timeout: 120000 });
+    // At half speed, so that a slow runner shows nearly every frame; the file must still play at the video's own.
+    await other.click('#video-speed');
     await other.click('#video-save');
     await other.waitForFunction(() => document.querySelector('#hud-label').textContent.startsWith('Saving'), {
       timeout: 30000,
@@ -455,7 +457,7 @@ await check('a video is saved with its plates drawn on it, as an MP4 the browser
     expect((await other.$eval('#video-save', (node) => node.textContent)) === 'Stop and save', 'the button stops');
     const name = `${sample.id}-plates.mp4`;
     const path = join(downloads, name);
-    const deadline = Date.now() + (sample.duration + 60) * 1000;
+    const deadline = Date.now() + (2 * sample.duration + 60) * 1000;
     while (!existsSync(path) && Date.now() < deadline) await sleep(250);
     expect(existsSync(path), `${name} was saved`);
     await sleep(500);
@@ -465,7 +467,7 @@ await check('a video is saved with its plates drawn on it, as an MP4 the browser
     const frames = file.readUInt32BE(stsz + 12);
     const source = readFileSync(join(siteDir, 'samples', sample.file));
     const sourceFrames = source.readUInt32BE(source.indexOf('stsz') + 12);
-    expect(frames >= 0.75 * sourceFrames, `${frames} frames of the sample's ${sourceFrames}`);
+    expect(frames >= 0.9 * sourceFrames, `${frames} frames of the sample's ${sourceFrames}`);
     const played = await other.evaluate(async (base64) => {
       const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
       const video = Object.assign(document.createElement('video'), { muted: true });
@@ -485,7 +487,7 @@ await check('a video is saved with its plates drawn on it, as an MP4 the browser
       return { duration: video.duration, width: video.videoWidth, height: video.videoHeight, mean: sum / (3 * 64 * 36) };
     }, file.toString('base64'));
     expect(played.width === sample.width && played.height === sample.height, `its size: ${JSON.stringify(played)}`);
-    expect(Math.abs(played.duration - sample.duration) < 0.5, `its duration: ${played.duration} s`);
+    expect(Math.abs(played.duration - sample.duration) < 0.5, `its duration, though saved at ½×: ${played.duration} s`);
     expect(played.mean > 20, `its frames show the video: ${JSON.stringify(played)}`);
     const toast = await other.$eval('#toasts', (node) => node.textContent);
     expect(toast.includes(`Saved ${name}`), `the page says so: "${toast}"`);
