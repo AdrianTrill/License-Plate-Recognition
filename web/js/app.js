@@ -285,16 +285,19 @@ async function readPhoto(blob, { labels = null, credit = null } = {}) {
   state.photo = { bitmap, result: null, inputs: null, labels, credit };
   state.selected = -1;
   state.pinned = false;
-  $('#viewer').dataset.state = 'photo';
-  viewer.showImage(bitmap);
-  showCredit(credit);
-  $('#busy').hidden = false;
+  // The camera or video may have been chosen while the photo was opening: it is read, and shown when photos are again.
+  if (state.mode === 'photo') {
+    $('#viewer').dataset.state = 'photo';
+    viewer.showImage(bitmap);
+    showCredit(credit);
+    $('#busy').hidden = false;
+  }
   try {
     const result = await engine.read(await createImageBitmap(bitmap), { keepInputs: true });
     if (reading !== state.reading) return;
     state.photo.result = result;
     state.photo.inputs = result.inputs ?? null;
-    showPhoto({ animate: true });
+    if (state.mode === 'photo') showPhoto({ animate: true });
   } catch (error) {
     toast(`Could not read the photo: ${error.message}`, 'error');
   } finally {
@@ -365,7 +368,7 @@ function showCredit(credit) {
 
 function liveResult(result, info, frame) {
   if (state.mode === 'photo') return;
-  // A video shown behind its reads has its frames drawn by liveDisplay; the camera is drawn here.
+  // Frames shown behind their reads are drawn by liveDisplay; in a browser without frame callbacks, here.
   if (!info.delayed) {
     if (!viewer.live || viewer.source?.width !== info.width || viewer.source?.height !== info.height) {
       viewer.showVideo(info.width, info.height);
@@ -391,9 +394,9 @@ function liveResult(result, info, frame) {
   }
 }
 
-// A video's frame, shown behind its time, with its plates where they are in it.
+// A frame of the camera or video, shown a little behind, with its plates where they are in it.
 function liveDisplay({ bitmap, plates }) {
-  if (state.mode !== 'video') return;
+  if (state.mode === 'photo') return;
   state.liveTracks = plates;
   viewer.showFrame(
     bitmap,

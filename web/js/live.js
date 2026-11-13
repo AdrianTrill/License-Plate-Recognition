@@ -1,17 +1,18 @@
 // The camera and video modes: read frames as fast as the networks allow, follow the plates with the C++ tracker,
 // and log each plate once it is read confidently.
 //
-// A camera is shown live, each plate drawn where it has moved to since its frame was read. A video is shown a little
-// behind instead: every frame it plays is kept until its turn, the reader takes the newest one each time it is free,
-// and each frame is shown with its plates placed between the reads before and after it, so that they fit.
+// Frames are shown a little behind instead of as they come: every frame the camera or video shows is kept until its
+// turn, the reader takes the newest one each time it is free, and each frame is shown with its plates placed between
+// the reads before and after it, so that they fit. A camera stays within a sixth of a second, so that it feels live;
+// a frame with no read after it yet has its plates moved on at their velocities.
 
 import { COAST_MS, platesAt } from './timeline.js';
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const smooth = (average, value) => (average === null ? value : average + 0.1 * (value - average));
-// How far behind its own time a video is shown, in its milliseconds: enough for the read after a frame to be done.
+// How far behind a camera or video is shown, in milliseconds of its clock: enough for the read after a frame to be done.
 const MIN_DELAY = 50;
-const MAX_DELAY = 600;
+const MAX_DELAY = { video: 600, camera: 150 };
 
 export class Live {
   constructor({ engine, video, onResult, onEvents, onState, onPresent, onDisplay }) {
@@ -99,6 +100,7 @@ export class Live {
     this.running = true;
     this.paused = false;
     this.started = performance.now();
+    this.delay = kind === 'camera' ? 100 : 150;
     this.shown = null;
     this.lastStamp = null;
     this.lastCount = null;
@@ -107,7 +109,7 @@ export class Live {
     this.frames = [];
     this.onState({ running: true, paused: false, kind });
     this.generation += 1;
-    if (kind === 'video' && this.video.requestVideoFrameCallback) {
+    if (this.video.requestVideoFrameCallback) {
       this.collect(this.generation);
       this.readFrames(this.generation);
       this.display(this.generation);
@@ -175,12 +177,17 @@ export class Live {
     this.onState({ running: false, paused: false, kind: 'video', ended: true });
   }
 
+  // The time now, on the clock frames are timed by: a video's own, or the camera's since it started.
+  clock() {
+    return this.kind === 'camera' ? performance.now() - this.started : this.video.currentTime * 1000;
+  }
+
   // Keeps every frame the video shows, with its time, until it has been shown in its turn.
   collect(generation) {
     const video = this.video;
     const step = (now, metadata) => {
       if (!this.running || generation !== this.generation) return;
-      const time = metadata.mediaTime * 1000;
+      const time = this.kind === 'camera' ? now - this.started : metadata.mediaTime * 1000;
       const last = this.queue.at(-1);
       if (!last || time > last.time) {
         if (last) this.gap = smooth(this.gap, time - last.time);
@@ -261,7 +268,7 @@ export class Live {
         const previous = this.reads.at(-1);
         this.reads.push({ time: entry.time, tracks: result.tracking.tracks.filter((track) => track.visible) });
         this.readCount += 1;
-        this.latency = smooth(this.latency, Math.max(0, this.video.currentTime * 1000 - entry.time));
+        this.latency = smooth(this.latency, Math.max(0, this.clock() - entry.time));
         if (previous) this.interval = smooth(this.interval, entry.time - previous.time);
       }
       this.frames.push(performance.now());
@@ -285,8 +292,8 @@ export class Live {
     const step = () => {
       if (generation !== this.generation) return;
       const wanted = (this.latency ?? 0) + (this.interval ?? 0) + (this.gap ?? 0);
-      this.delay += 0.03 * (Math.min(MAX_DELAY, Math.max(MIN_DELAY, wanted)) - this.delay);
-      const target = this.video.currentTime * 1000 - this.delay;
+      this.delay += 0.03 * (Math.min(MAX_DELAY[this.kind], Math.max(MIN_DELAY, wanted)) - this.delay);
+      const target = this.clock() - this.delay;
       let chosen = null;
       for (const entry of this.queue) {
         if (!entry.bitmap) continue;
