@@ -13,6 +13,9 @@ const smooth = (average, value) => (average === null ? value : average + 0.1 * (
 // How far behind a camera or video is shown, in milliseconds of its clock: enough for the read after a frame to be done.
 const MIN_DELAY = 50;
 const MAX_DELAY = { video: 600, camera: 150 };
+// After a video jumps back, as when it plays again, WebKit can call back once more with the time of the frame before
+// the jump, while the video's own time is already at the new place: a frame this far ahead of it is that one.
+const STALE = 250;
 
 export class Live {
   constructor({ engine, video, onResult, onEvents, onState, onPresent, onDisplay }) {
@@ -23,6 +26,7 @@ export class Live {
     this.onState = onState;
     this.onPresent = onPresent;
     this.onDisplay = onDisplay;
+    this.onPass = null; // while a video is saved: called, as onDisplay, for frames passed over without being shown
     this.stream = null;
     this.kind = null; // 'camera' or 'video'
     this.running = false;
@@ -86,6 +90,21 @@ export class Live {
     this.video.playbackRate = this.speed;
     await this.video.play();
     this.begin('video');
+  }
+
+  // Plays the video again from its start, with the tracker and the frames reset; false if it stopped meanwhile.
+  async restart() {
+    const generation = ++this.generation; // stops reading and showing the frames before it
+    this.running = false;
+    this.video.pause();
+    const seeked = new Promise((resolve) => this.video.addEventListener('seeked', resolve, { once: true }));
+    this.video.currentTime = 0;
+    await Promise.race([seeked, sleep(2000)]);
+    if (generation !== this.generation) return false;
+    await this.video.play();
+    if (generation !== this.generation) return false;
+    this.begin('video');
+    return true;
   }
 
   // How fast videos play: slower, and the reader sees more frames of each plate.
@@ -188,8 +207,11 @@ export class Live {
     const step = (now, metadata) => {
       if (!this.running || generation !== this.generation) return;
       const time = this.kind === 'camera' ? now - this.started : metadata.mediaTime * 1000;
+      const stale = this.kind === 'video' && time - video.currentTime * 1000 > STALE;
+      // A frame before the last, without a seek, is the video starting again: its frames before are done with.
+      if (!stale && this.queue.length > 0 && time < this.queue.at(-1).time) this.flush();
       const last = this.queue.at(-1);
-      if (!last || time > last.time) {
+      if (!stale && (!last || time > last.time)) {
         if (last) this.gap = smooth(this.gap, time - last.time);
         const entry = { time, bitmap: null, released: false };
         this.queue.push(entry);
@@ -307,6 +329,14 @@ export class Live {
   }
 
   show(entry) {
+    if (this.onPass) {
+      for (const passed of this.queue) {
+        if (passed === entry) break;
+        if (passed.bitmap && passed !== this.displayed) {
+          this.onPass({ bitmap: passed.bitmap, time: passed.time, plates: platesAt(this.reads, passed.time) });
+        }
+      }
+    }
     this.displayed = entry;
     this.displayedReads = this.readCount;
     this.onDisplay({ bitmap: entry.bitmap, time: entry.time, plates: platesAt(this.reads, entry.time) });

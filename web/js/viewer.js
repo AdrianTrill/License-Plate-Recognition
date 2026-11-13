@@ -72,6 +72,21 @@ export class Viewer {
     this.draw();
   }
 
+  // A frame of a video with its plates where they are in it, filling another canvas, as a saved video shows it:
+  // outlines and labels are sized as on a screen a thousand pixels across.
+  renderFrame(context, bitmap, plates) {
+    const { width, height } = context.canvas;
+    const zoom = Math.max(width, height) / 1000;
+    context.save();
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(bitmap, 0, 0, width, height);
+    context.scale(zoom, zoom);
+    const scale = width / bitmap.width / zoom;
+    const layout = { scale, left: 0, top: 0, right: bitmap.width * scale };
+    for (const plate of plates) this.drawPlate(plate, plate.box, layout, { context, appear: 1 });
+    context.restore();
+  }
+
   clearFrame() {
     this.frame = null;
     this.draw();
@@ -141,13 +156,8 @@ export class Viewer {
     const height = this.canvas.clientHeight;
     if (!this.source || width === 0 || height === 0) return null;
     const scale = Math.min(width / this.source.width, height / this.source.height);
-    return {
-      scale,
-      left: (width - this.source.width * scale) / 2,
-      top: (height - this.source.height * scale) / 2,
-      width,
-      height,
-    };
+    const left = (width - this.source.width * scale) / 2;
+    return { scale, left, top: (height - this.source.height * scale) / 2, right: left + this.source.width * scale };
   }
 
   pointer(event, click) {
@@ -223,7 +233,12 @@ export class Viewer {
       context.clip();
     }
     for (const index of order) {
-      this.drawPlate(this.plates[index], layout, index === focus, focus >= 0 && index !== focus);
+      this.drawPlate(this.plates[index], this.shown(this.plates[index]), layout, {
+        context,
+        appear: this.appear,
+        focused: index === focus,
+        dimmed: focus >= 0 && index !== focus,
+      });
     }
     context.restore();
   }
@@ -247,11 +262,11 @@ export class Viewer {
     ];
   }
 
-  drawPlate(plate, layout, focused, dimmed) {
-    const context = this.context;
-    let [x1, y1, x2, y2] = this.screenBox(this.shown(plate), layout);
+  // A plate's outline and label, at box in the source's pixels; appear grows new readings from 0 to 1.
+  drawPlate(plate, box, layout, { context, appear, focused = false, dimmed = false }) {
+    let [x1, y1, x2, y2] = this.screenBox(box, layout);
     // New readings grow out of their centers.
-    const grow = 0.6 + 0.4 * easeOut(this.appear);
+    const grow = 0.6 + 0.4 * easeOut(appear);
     const cx = (x1 + x2) / 2;
     const cy = (y1 + y2) / 2;
     x1 = cx + (x1 - cx) * grow;
@@ -259,7 +274,7 @@ export class Viewer {
     y1 = cy + (y1 - cy) * grow;
     y2 = cy + (y2 - cy) * grow;
     const color = plate.text ? COLORS[sureness(plate.confidence)] : COLORS.unread;
-    const alpha = (dimmed ? 0.55 : 1) * (plate.faded ? 0.5 : 1) * Math.min(1, this.appear * 2);
+    const alpha = (dimmed ? 0.55 : 1) * (plate.faded ? 0.5 : 1) * Math.min(1, appear * 2);
 
     context.save();
     context.globalAlpha = alpha;
@@ -290,13 +305,12 @@ export class Viewer {
     context.stroke();
 
     if (this.labels || focused) {
-      this.drawLabel(plate, x1, y1, y2, color, layout);
+      this.drawLabel(plate, x1, y1, y2, color, layout, context);
     }
     context.restore();
   }
 
-  drawLabel(plate, x, top, bottom, color, layout) {
-    const context = this.context;
+  drawLabel(plate, x, top, bottom, color, layout, context) {
     const text = plate.text || 'unreadable';
     const detail = plate.text ? percent(plate.confidence) : '';
     context.font = LABEL_FONT;
@@ -307,7 +321,7 @@ export class Viewer {
     const height = 26;
     let y = top - height - 8;
     if (y < layout.top + 2) y = bottom + 8;
-    const left = Math.max(layout.left + 2, Math.min(x - 3, layout.left + this.source.width * layout.scale - width - 2));
+    const left = Math.max(layout.left + 2, Math.min(x - 3, layout.right - width - 2));
 
     context.fillStyle = 'rgba(7, 10, 15, 0.86)';
     context.beginPath();

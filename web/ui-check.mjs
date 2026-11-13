@@ -1,11 +1,11 @@
 // Checks the site itself in headless Chrome, as GitHub Pages serves it: it must start without errors, read every sample
 // as labeled and as the native command line does, answer its keys and settings, read an uploaded photo, run the camera
-// and a video through the tracker, and fit a phone's screen.
+// and a video through the tracker, save a video with its plates, and fit a phone's screen.
 //
 //   npm ci --prefix web && node web/ui-check.mjs SITE_DIR NATIVE_JSON [--screenshots DIR]
 //
 // NATIVE_JSON is `lpr --json samples/*.jpg`. Chrome comes from CHROME_PATH, or else from where it is usually installed.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -320,6 +320,82 @@ await check('a video is read where video frames carry no time, as in Safari and 
     );
   } finally {
     await other.close();
+  }
+});
+
+await check('a video is saved with its plates drawn on it, as an MP4 the browser plays', async () => {
+  // The shortest sample, played through once while it is saved; the file downloads when the video ends.
+  const sample = [...videos].sort((a, b) => a.duration - b.duration)[0];
+  const downloads = mkdtempSync(join(tmpdir(), 'lpr-saved-'));
+  const session = await browser.target().createCDPSession();
+  await session.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
+  const other = await browser.newPage();
+  other.on('pageerror', (error) => problems.push(`uncaught: ${error.message}`));
+  other.on('console', (message) => {
+    if (message.type() === 'error') problems.push(`console: ${message.text()}`);
+  });
+  await other.evaluateOnNewDocument(() => localStorage.setItem('lpr-settings', JSON.stringify({ gpu: false })));
+  try {
+    await other.setViewport({ width: 1280, height: 800 });
+    await other.goto(`${site}?video=${sample.id}`, { waitUntil: 'load' });
+    await other.waitForFunction(() => !document.querySelector('#video-save').hidden, { timeout: 120000 });
+    await other.click('#video-save');
+    await other.waitForFunction(() => document.querySelector('#hud-label').textContent.startsWith('Saving'), {
+      timeout: 30000,
+    });
+    expect((await other.$eval('#video-save', (node) => node.textContent)) === 'Stop and save', 'the button stops');
+    const name = `${sample.id}-plates.mp4`;
+    const path = join(downloads, name);
+    const deadline = Date.now() + (sample.duration + 60) * 1000;
+    while (!existsSync(path) && Date.now() < deadline) await sleep(250);
+    expect(existsSync(path), `${name} was saved`);
+    await sleep(500);
+    const file = readFileSync(path);
+    // The frames: as many as the sample has, or nearly, at its own pace.
+    const stsz = file.indexOf('stsz');
+    const frames = file.readUInt32BE(stsz + 12);
+    const source = readFileSync(join(siteDir, 'samples', sample.file));
+    const sourceFrames = source.readUInt32BE(source.indexOf('stsz') + 12);
+    expect(frames >= 0.75 * sourceFrames, `${frames} frames of the sample's ${sourceFrames}`);
+    const played = await other.evaluate(async (base64) => {
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+      const video = Object.assign(document.createElement('video'), { muted: true });
+      video.src = URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
+      await new Promise((resolve, reject) => {
+        video.onloadeddata = resolve;
+        video.onerror = () => reject(new Error(`the browser cannot play it: ${video.error?.message}`));
+      });
+      video.currentTime = video.duration / 2;
+      await new Promise((resolve) => (video.onseeked = resolve));
+      const canvas = Object.assign(document.createElement('canvas'), { width: 64, height: 36 });
+      const context = canvas.getContext('2d');
+      context.drawImage(video, 0, 0, 64, 36);
+      const pixels = context.getImageData(0, 0, 64, 36).data;
+      let sum = 0;
+      for (let i = 0; i < pixels.length; i += 4) sum += pixels[i] + pixels[i + 1] + pixels[i + 2];
+      return { duration: video.duration, width: video.videoWidth, height: video.videoHeight, mean: sum / (3 * 64 * 36) };
+    }, file.toString('base64'));
+    expect(played.width === sample.width && played.height === sample.height, `its size: ${JSON.stringify(played)}`);
+    expect(Math.abs(played.duration - sample.duration) < 0.5, `its duration: ${played.duration} s`);
+    expect(played.mean > 20, `its frames show the video: ${JSON.stringify(played)}`);
+    const toast = await other.$eval('#toasts', (node) => node.textContent);
+    expect(toast.includes(`Saved ${name}`), `the page says so: "${toast}"`);
+    // Saving again, then leaving the video, saves nothing.
+    await other.click('#video-save');
+    await other.waitForFunction(() => document.querySelector('#hud-label').textContent.startsWith('Saving'), {
+      timeout: 30000,
+    });
+    await other.keyboard.press('p');
+    await other.waitForFunction(() => document.querySelector('#toasts').textContent.includes('Stopped saving'), {
+      timeout: 10000,
+    });
+    await sleep(1500);
+    expect(readdirSync(downloads).length === 1, `nothing more was saved: ${readdirSync(downloads).join(', ')}`);
+    console.log(`      ${frames} of ${sourceFrames} frames, ${(file.length / 1e6).toFixed(1)} MB`);
+  } finally {
+    await other.close();
+    await session.detach();
+    rmSync(downloads, { recursive: true, force: true });
   }
 });
 

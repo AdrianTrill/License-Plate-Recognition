@@ -5,6 +5,7 @@ import { isolate } from './isolate.js';
 import { $, bytes, clock, element, icon, milliseconds, toast } from './format.js';
 import { Live } from './live.js';
 import { PlateLog, renderInspector, renderPlates, renderStages } from './plates.js';
+import { Recorder } from './recorder.js';
 import { COAST_MS } from './timeline.js';
 import { Viewer } from './viewer.js';
 
@@ -20,6 +21,9 @@ const state = {
   videos: [],
   video: -1, // the sample video playing, or -1 for the visitor's own
   videoLabels: null,
+  videoName: 'video',
+  recorder: null, // while the video is saved
+  canSave: false,
   photo: null, // { bitmap, result, inputs, labels, credit }
   selected: -1,
   pinned: false,
@@ -113,6 +117,10 @@ async function start() {
       `(${bytes(detector.bytes)}) and CCT-S reader (${bytes(recognizer.bytes)})`;
     $('#loading').hidden = true;
     document.body.dataset.ready = 'true';
+    Recorder.available().then((available) => {
+      state.canSave = available;
+      $('#video-save').hidden = !available || $('#video-toggle').hidden;
+    });
     if (state.pending) {
       const next = state.pending;
       state.pending = null;
@@ -209,13 +217,15 @@ async function openVideoSample(index, { scroll = true } = {}) {
   });
   setAddress('video', sample.id);
   await playVideo(`${base}samples/${sample.file}`, {
+    name: sample.id,
     labels: sample.plates,
     credit: { text: `Video: ${sample.author}, ${sample.license}`, href: sample.source },
   });
 }
 
 // Plays a sample's URL or the visitor's file, with an empty plate log.
-async function playVideo(source, { labels = null, credit = null } = {}) {
+async function playVideo(source, { name = 'video', labels = null, credit = null } = {}) {
+  state.videoName = name;
   state.videoLabels = labels;
   log.clear(labels);
   state.liveTracks = [];
@@ -395,14 +405,86 @@ function liveResult(result, info, frame) {
 }
 
 // A frame of the camera or video, shown a little behind, with its plates where they are in it.
-function liveDisplay({ bitmap, plates }) {
+function liveDisplay(frame) {
   if (state.mode === 'photo') return;
+  const { bitmap, plates } = frame;
   state.liveTracks = plates;
   viewer.showFrame(
     bitmap,
     plates.map((track) => ({ ...track, faded: !track.reported })),
   );
   log.visible(new Set(plates.map((track) => track.id)));
+  saveFrame(frame);
+}
+
+// A frame of the video being saved, drawn as it was shown.
+function saveFrame({ bitmap, time, plates }) {
+  state.recorder?.add(time, (context) =>
+    viewer.renderFrame(
+      context,
+      bitmap,
+      plates.map((track) => ({ ...track, faded: !track.reported })),
+    ),
+  );
+}
+
+// Plays the video again from the start, saving each frame it shows; the file downloads when it ends.
+async function startSaving() {
+  const video = live.video;
+  if (live.kind !== 'video' || video.videoWidth === 0) return;
+  let recorder;
+  try {
+    recorder = await Recorder.create(video.videoWidth, video.videoHeight);
+  } catch (error) {
+    toast(error.message, 'error');
+    return;
+  }
+  if (live.kind !== 'video') {
+    recorder.cancel();
+    return;
+  }
+  state.recorder = recorder;
+  live.onPass = saveFrame;
+  showSaving();
+  toast('Saving the video as it plays: keep this tab open until it ends');
+  await restartVideo();
+}
+
+// Stops saving, and saves what was recorded unless cancelled.
+async function stopSaving({ save = true } = {}) {
+  const recorder = state.recorder;
+  if (!recorder) return;
+  state.recorder = null;
+  live.onPass = null;
+  showSaving();
+  if (!save) {
+    recorder.cancel();
+    toast('Stopped saving the video');
+    return;
+  }
+  try {
+    const blob = await recorder.finish();
+    const name = `${state.videoName}-plates.mp4`;
+    download(blob, name);
+    toast(`Saved ${name}, ${bytes(blob.size)}`);
+  } catch (error) {
+    toast(`Could not save the video: ${error.message}`, 'error');
+  }
+}
+
+function showSaving() {
+  const saving = Boolean(state.recorder);
+  const button = $('#video-save');
+  button.dataset.saving = String(saving);
+  button.querySelector('span').textContent = saving ? 'Stop and save' : 'Save video';
+  button.querySelector('use').setAttribute('href', saving ? '#i-stop' : '#i-download');
+  if (live.running && !live.paused && live.kind === 'video') $('#hud-label').textContent = saving ? 'Saving' : 'Reading';
+}
+
+function download(blob, name) {
+  const link = element('a', { href: URL.createObjectURL(blob), download: name });
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
 }
 
 function liveEvents(events, frame) {
@@ -417,13 +499,14 @@ function liveState({ running, paused, kind, ended, error }) {
   const hud = $('#hud');
   hud.hidden = !running;
   hud.dataset.paused = String(Boolean(paused));
-  $('#hud-label').textContent = paused ? 'Paused' : kind === 'camera' ? 'Live' : 'Reading';
+  $('#hud-label').textContent = paused ? 'Paused' : kind === 'camera' ? 'Live' : state.recorder ? 'Saving' : 'Reading';
   const cameraToggle = $('#camera-toggle');
   cameraToggle.querySelector('span').textContent = running && kind === 'camera' ? 'Stop the camera' : 'Start the camera';
   cameraToggle.querySelector('use').setAttribute('href', running && kind === 'camera' ? '#i-stop' : '#i-camera');
   const videoToggle = $('#video-toggle');
   videoToggle.hidden = !(running || ended) || kind !== 'video';
   $('#video-speed').hidden = videoToggle.hidden;
+  $('#video-save').hidden = videoToggle.hidden || !state.canSave;
   videoToggle.querySelector('span').textContent = ended ? 'Play again' : paused ? 'Play' : 'Pause';
   videoToggle.querySelector('use').setAttribute('href', ended || paused ? '#i-play' : '#i-pause');
   $('#timeline').hidden = kind !== 'video';
@@ -435,6 +518,8 @@ function liveState({ running, paused, kind, ended, error }) {
     $('#viewer').dataset.state = 'empty';
   }
   if (error) toast(`Reading stopped: ${error.message}`, 'error');
+  if (state.recorder && ended) stopSaving();
+  else if (state.recorder && !running) stopSaving({ save: false });
 }
 
 // Which of the tracks in view is one of these, or -1.
@@ -511,7 +596,7 @@ function openFile(file) {
     state.video = -1;
     document.querySelectorAll('#video-samples .sample').forEach((button) => button.setAttribute('aria-selected', 'false'));
     setAddress(null);
-    whenReady(() => playVideo(file));
+    whenReady(() => playVideo(file, { name: file.name.replace(/\.[^.]*$/, '') || 'video' }));
     return;
   }
   setMode('photo', { autoplay: false });
@@ -564,18 +649,26 @@ $('#camera-toggle').addEventListener('click', () => {
   else whenReady(() => startCamera());
 });
 $('#camera-switch').addEventListener('click', () => startCamera(live.facing === 'environment' ? 'user' : 'environment'));
-$('#video-toggle').addEventListener('click', async () => {
-  if (!live.running && live.kind === 'video') {
-    // Played again from the start, the tracker numbers its plates from one again, so the log starts over too.
-    log.clear(state.videoLabels);
-    $('#plate-count').textContent = '0';
-    $('#plates-empty').hidden = false;
-    live.video.currentTime = 0;
-    await live.video.play();
-    live.begin('video');
-  } else {
-    live.toggle();
+// Played again from the start, the tracker numbers its plates from one again, so the log starts over too.
+async function restartVideo() {
+  log.clear(state.videoLabels);
+  $('#plate-count').textContent = '0';
+  $('#plates-empty').hidden = false;
+  try {
+    await live.restart();
+  } catch (error) {
+    toast(`Could not play the video again: ${error.message}`, 'error');
+    stopSaving({ save: false });
   }
+}
+
+$('#video-toggle').addEventListener('click', () => {
+  if (!live.running && live.kind === 'video') restartVideo();
+  else live.toggle();
+});
+$('#video-save').addEventListener('click', () => {
+  if (state.recorder) stopSaving();
+  else startSaving();
 });
 $('#video-speed').addEventListener('click', () => {
   const index = SPEEDS.findIndex((speed) => speed.rate === live.speed);
@@ -590,10 +683,15 @@ $('#video').addEventListener('timeupdate', () => {
   const position = (100 * video.currentTime) / video.duration;
   $('#timeline-fill').style.width = `${position}%`;
   $('#timeline').setAttribute('aria-valuenow', String(Math.round(position)));
+  if (state.recorder && live.running && !live.paused) $('#hud-label').textContent = `Saving ${Math.round(position)}%`;
 });
 $('#timeline').addEventListener('click', async (event) => {
   const video = $('#video');
   if (!video.duration) return;
+  if (state.recorder) {
+    toast('The whole video is being saved: stop saving to jump in it');
+    return;
+  }
   const rect = event.currentTarget.getBoundingClientRect();
   // A jump in time ends the plates in view; their reads stay in the log.
   liveEvents((await engine.finishTracks()).events, null);
@@ -604,12 +702,7 @@ $('#export-button').addEventListener('click', () => {
     toast('No plates to export yet');
     return;
   }
-  const link = element('a', {
-    href: URL.createObjectURL(new Blob([log.csv()], { type: 'text/csv' })),
-    download: 'plates.csv',
-  });
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  download(new Blob([log.csv()], { type: 'text/csv' }), 'plates.csv');
 });
 $('#copy-link').addEventListener('click', async () => {
   try {
