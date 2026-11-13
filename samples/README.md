@@ -4,7 +4,7 @@ The demo's sample photos and videos, all from [Wikimedia Commons](https://common
 
 ## Photos
 
-Twelve photos with plates from eight European countries, Brazil, and the United States. Each was scaled to 1280 pixels wide and saved again as a JPEG without its metadata; nothing else was changed.
+Thirteen photos with plates from eight European countries, Brazil, the United States, and Vietnam, whose plate is on two lines. Each was scaled to 1280 pixels wide and saved again as a JPEG without its metadata; nothing else was changed.
 
 [`samples.json`](samples.json) lists them for the demo and the checks, with the plates on each as a person reads them: the labels the demo, the native tests, and the site's checks compare readings with.
 
@@ -22,6 +22,7 @@ Twelve photos with plates from eight European countries, Brazil, and the United 
 | [`pl-gdansk.jpg`](pl-gdansk.jpg) | Toyota Aygo, Gdańsk | `GD560TM` | [Andrzej Otrębski](https://commons.wikimedia.org/wiki/File:Gdansk_Toyota_Aygo.jpg) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) |
 | [`br-brasilia.jpg`](br-brasilia.jpg) | A convoy opening a tunnel, Brasília | `REL2D66`, `REL3E32` | [Agência Brasília from Brasília, Brasil](https://commons.wikimedia.org/wiki/File:Governador_Ibaneis_Rocha_entrega_T%C3%BAnel_Rei_Pel%C3%A9,_maior_obra_de_sua_gest%C3%A3o_(52952289062).jpg) | [CC BY 2.0](https://creativecommons.org/licenses/by/2.0) |
 | [`us-california.jpg`](us-california.jpg) | Mercedes-Benz E 63 AMG, California | `6ARX058` | [Andy Rusch from Santa Barbara, USA](https://commons.wikimedia.org/wiki/File:Black_MB_E_63_AMG_rl.jpg) | [CC BY 2.0](https://creativecommons.org/licenses/by/2.0) |
+| [`vn-nghe-an.jpg`](vn-nghe-an.jpg) | Honda motorbike with a two-line plate, Nghệ An | `37L214789` | [Lê Huỳnh Bộ](https://commons.wikimedia.org/wiki/File:Bi%E1%BB%83n_s%E1%BB%91_xe_Ngh%E1%BB%87_An.jpg) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0) |
 
 ## Videos
 

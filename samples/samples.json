@@ -182,5 +182,20 @@
     "source": "https://commons.wikimedia.org/wiki/File:Black_MB_E_63_AMG_rl.jpg",
     "width": 1280,
     "height": 960
+  },
+  {
+    "id": "vn-nghe-an",
+    "file": "vn-nghe-an.jpg",
+    "title": "Honda motorbike with a two-line plate, Nghệ An",
+    "country": "VN",
+    "plates": [
+      "37L214789"
+    ],
+    "author": "Lê Huỳnh Bộ",
+    "license": "CC BY-SA 4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0",
+    "source": "https://commons.wikimedia.org/wiki/File:Bi%E1%BB%83n_s%E1%BB%91_xe_Ngh%E1%BB%87_An.jpg",
+    "width": 1280,
+    "height": 815
   }
 ]

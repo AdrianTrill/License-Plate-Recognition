@@ -31,6 +31,7 @@ const std::vector<std::pair<std::string, std::vector<std::string>>> kSamples{
     {"pl-gdansk.jpg", {"GD560TM"}},
     {"br-brasilia.jpg", {"REL2D66", "REL3E32"}},
     {"us-california.jpg", {"6ARX058"}},
+    {"vn-nghe-an.jpg", {"37L214789"}},
 };
 
 std::vector<std::string> texts(const lpr::FrameResult& frame) {
