@@ -143,6 +143,7 @@ The [OpenALPR benchmark](https://github.com/openalpr/benchmarks) has 444 photos,
 
 - **The European misses are all O against 0, and the labels are wrong.** On five Slovak plates, a Czech one, and a British one, the label has the letter O where the plate has a zero: the British plate is `OY09 FEU`, labeled `OYO9FEU`. The reader reads the zero; counting the two as one, every European plate is read.
 - **The American misses are mostly small plates.** 20 of the 25 come from the benchmark's security camera stills, whose plates are 87 pixels wide at the median, some behind a fence; 4 are O against 0. The one Brazilian miss swaps two letters.
+- **Plate formats and repeated reads don't help here.** The European readings already follow their countries' formats, and the reader names one region for the whole United States, whose states each have their own; so choosing between O and 0 by a format would change nothing measured, and could break plates outside the formats, as Romania's red temporary ones. Reading each plate from a few slightly different crops and averaging them, as a video's frames are, read 2 more plates exactly with one set of crops, at twice the reader's time, and 2 fewer with others: noise, not a gain.
 - **The confidence can be acted on.** Setting aside the 10% of readings the reader is least sure of leaves 96.7% exact, at a confidence of 0.87 or more; setting aside 20% leaves 97.2%.
 
 **What the numbers leave open.** Each photo labels one plate, so the 37 other detections, many of them real plates in the background, can't be scored, and precision isn't measured. The networks' training sets aren't published photo by photo, so whether they include these photos can't be ruled out. And three countries' plates say little about the other 62 the reader covers; [fast-plate-ocr's validation results](https://github.com/ankandrew/fast-plate-ocr/releases/tag/arg-plates) report its own per-country accuracy.
@@ -279,7 +280,6 @@ node web/ui-check.mjs build-wasm/site native.json                # the site in h
 ## Next steps
 
 - Plates on two lines, as on motorcycles and some American and Brazilian designs: the reader reads one line.
-- Each country's plate formats, to choose between O and 0 by position, measured on photos other than the benchmark's.
 - A smaller reader for slow phones: fast-plate-ocr's `cct-xs-v2` runs four times faster, but in the reference implementation it read 397 of the benchmark's plates exactly, against 410 for this one.
 
 ## Credits
