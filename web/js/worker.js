@@ -18,7 +18,14 @@ let backend = null;
 let canvas = null;
 let context = null;
 
-self.onmessage = async ({ data }) => {
+// One message at a time, in order: a read keeps its frame in the pipeline while it waits for the networks, so a read
+// begun meanwhile would replace it.
+let queue = Promise.resolve();
+self.onmessage = ({ data }) => {
+  queue = queue.then(() => handle(data));
+};
+
+async function handle(data) {
   try {
     switch (data.type) {
       case 'init':
@@ -43,7 +50,7 @@ self.onmessage = async ({ data }) => {
     data.bitmap?.close?.();
     self.postMessage({ type: 'error', id: data.id, message: String(error?.message ?? error) });
   }
-};
+}
 
 async function gpuAdapter() {
   try {
