@@ -19,6 +19,11 @@ License Plate Recognition finds and reads license plates in photos, videos, and 
 </p>
 <p align="center"><em>The <a href="https://adriantrill.github.io/License-Plate-Recognition/">live demo</a> on GitHub Pages: sample photos read in the page, and a plate inspected.</em></p>
 
+<p align="center">
+  <a href="https://adriantrill.github.io/License-Plate-Recognition/?video=nl-2cv-parade"><img src="docs/assets/video.webp" width="857" alt="The video mode: a parade of Citroën 2CVs in the Netherlands plays at its own speed on WebGPU; as each car passes, its plate is outlined and labeled with its text and confidence, the outline moving with the plate, and the plate log beside it fills with the seven Dutch plates, each once, with a sharp view of it and a check that it matches the clip's labels"></a>
+</p>
+<p align="center"><em>The video mode, on one of its sample videos: each plate outlined as its car passes, and logged once.</em></p>
+
 ## What's inside
 
 | Part | What it does | How it is checked |
@@ -27,7 +32,7 @@ License Plate Recognition finds and reads license plates in photos, videos, and 
 | **[One pipeline, two runtimes](#one-pipeline-two-runtimes)** | The C++20 pipeline natively with ONNX Runtime, and compiled to WebAssembly with ONNX Runtime Web | On all 444 benchmark photos, the networks' inputs are identical bit for bit and every reading is the same |
 | **[Detection](#how-a-photo-is-read)** | YOLOv9-t at 384 pixels, with its non-maximum suppression moved out of the graph into C++, so its thresholds change as you drag them | The cut graph and the C++ suppression must find exactly the published graph's plates before the model is written |
 | **[Reading](#how-a-photo-is-read)** | Ten character slots and 66 regions, and a confidence that is the network's probability for exactly the text it read | Unit tests, and twelve labeled photos from ten countries |
-| **[Video](#following-plates-through-a-video)** | Plates followed from frame to frame, their reads fused, and each one logged once; a video slows down when the reader can't keep up with it | Unit tests, the four sample videos read natively against their labels, and in the browser |
+| **[Video](#following-plates-through-a-video)** | Plates followed from frame to frame, their reads fused, and each one logged once; a video plays at its own speed, each plate drawn where it has moved to since its frame was read | Unit tests, the four sample videos read natively against their labels, and in the browser |
 | **[Measured accuracy](#measured-accuracy)** | 443 of 444 plates found and 411 read exactly; 96.7% exact among the 90% of reads it is surest of | CI downloads the benchmark, runs it again, and requires the same numbers |
 | **[Command line](#command-line)** | `lpr`: photos to a table, JSON, or annotated copies; videos from ffmpeg; the evaluation; timings | CTest, on Linux, macOS, and Windows, and under AddressSanitizer |
 
@@ -55,7 +60,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel
 - **The plates** show each reading on a plate of its own, with the region's code on a band, and each character underlined in green, amber, or red by how sure the reader is of it; hovering a character lists the symbols it nearly read instead. For the samples, each reading is checked against the photo's label.
 - **What the reader saw** shows the 128×64 pixels the reader was given for the plate, and its confidence in each of its ten slots; the slots past the end of the plate hold padding.
 - **The pipeline** shows where the time went, stage by stage, colored by where each stage runs: in a network, in the C++ compiled to WebAssembly, or in the browser.
-- **Settings** (<kbd>S</kbd>) change the detector's threshold and the overlap limit of its suppression, and the photo is read again as you drag them; WebGPU can be switched off, the labels hidden, and videos left to play at their own speed. The page comes in dark and light themes, works on phones, and gives each sample photo and video a link of its own.
+- **Settings** (<kbd>S</kbd>) change the detector's threshold and the overlap limit of its suppression, and the photo is read again as you drag them; WebGPU can be switched off, and the labels hidden. The page comes in dark and light themes, works on phones, and gives each sample photo and video a link of its own.
 
 ## How a photo is read
 
@@ -93,16 +98,17 @@ Both builds compute the same bytes: the resampling uses integers, pixels become 
 ## Following plates through a video
 
 <p align="center">
-  <img src="docs/assets/video.png" width="857" alt="The video view: traffic on a tram line in Cluj-Napoca, an approaching car's plate followed and labeled CJ01RMM at 92.2%, beside the plate log listing the six plates the clip has shown, each once, with its best view, its confidence, its region, when it appeared, how many reads it took, and a check that it matches the clip's labels; under the video, the four sample videos">
+  <img src="docs/assets/video.png" width="857" alt="The video view: traffic on a tram line in Cluj-Napoca, an approaching car's plate followed and labeled CJ01RMM at 91.2%, beside the plate log listing the six plates the clip has shown, each once, with its best view, its confidence, its region, when it appeared, how many reads it took, and a check that it matches the clip's labels; under the video, the play and speed buttons and the four sample videos">
 </p>
 
 The video mode comes with four sample videos from Wikimedia Commons, each labeled with the plates it shows: traffic on a tram line in Cluj-Napoca, a Citroën 2CV parade in the Netherlands, a taxi in Sibiu, and parallel parking at night in Lyon. The first one plays as the mode opens, and the log checks each plate against the labels. In camera and video modes the page reads frames as fast as the networks allow, and [`PlateTracker`](include/lpr/tracker.hpp) follows the plates between them:
 
-- **Matching.** Each plate continues the track whose predicted box it overlaps most; the prediction moves the last box at the track's velocity. A plate too fast to overlap is matched to the nearest track of about its size within a plate's width.
+- **Matching.** Each plate continues the track whose predicted box it overlaps most; the prediction moves the last box at the track's velocity. A plate too fast to overlap is matched to the nearest track of about its size within a plate's width, and a track seen in the frame before reaches a width further for each 40 ms between the frames, up to four: at WebAssembly's 9 frames a second, a passing car's plate moves two or three widths between reads.
 - **Fusion.** A track's reads are averaged slot by slot, each weighted by its confidence, so a blurred frame counts for little and a misread character is outvoted. Reads are fused by length, and the length with the most weight wins, so a reading that lost or gained a character is never averaged into the rest.
 - **Edges.** A plate within 4 pixels (or 0.5% of the frame) of its edge may be cut off, and a cut-off plate reads confidently and wrongly, as `08ZJE` for `B108ZJE`; such frames move the track but are not read into it.
 - **Events.** A track is reported once it has three reads and a confident reading: a fused confidence of at least 0.6, and at least four characters, since fewer are part of a plate. It is reported again only for another confident reading with other text, and ends a second after it was last seen, with its text's most confident reading. The page logs each plate once, even when it is lost and found again, with its view from the frame it read most confidently, and exports the log as CSV.
-- **Pace.** A camera's frames are read as they come, but a video can wait. At WebAssembly's 9 frames a second, a plate that passes in half a second would be read four or five times, often too few for a confident reading, so a video slows down until at least 20 of its frames are read in each second of it, down to a quarter of its speed; the speed shows beside the frame rate. On WebGPU the samples play at their own speed, and the settings can turn this off.
+- **Smooth playback.** A video plays at its own speed. Whenever the reader is free it takes the frame on screen, with the frame's own timestamp, so no frame is read twice and each plate's velocity is measured between the frames' true times. On every frame shown in between, each plate is drawn where its velocity has carried it since its frame was read, so the outlines stay on the plates rather than trailing them: on the 2CV parade, an outline's center was a median 26 pixels from its plate on WebGPU, against 122 when drawn where the plate was read, and 132 on WebAssembly, against 312. A plate is drawn once it has been seen twice, and for a quarter second after the detector last found it.
+- **Speed.** The button beside Pause plays a video at ½× or ¼×, so a slow device reads more frames of each plate. On WebAssembly at full speed the page logs 14 or 15 of the samples' 16 plates, missing one that is in view for 0.4 s and sometimes one of the parade's; at ½×, all 16.
 
 The command line follows plates in any video ffmpeg can decode, here the Cluj-Napoca sample:
 
@@ -262,7 +268,7 @@ node web/ui-check.mjs build-wasm/site native.json                # the site in h
 | CI | Sanitizers | The same tests under AddressSanitizer, LeakSanitizer, and UndefinedBehaviorSanitizer |
 | CI | Format | clang-format |
 | CI | Evaluation | The benchmark downloaded and read again; the counts must match [`docs/evaluation.json`](docs/evaluation.json) |
-| Pages | Browser build | The pipeline compiled to WebAssembly and the site built; the sample videos read natively, every labeled plate required; the WebAssembly build against the native one on every sample photo; then the site in headless Chrome: every sample photo read as labeled and as natively, the inspector, keys, settings, an upload, the camera, the first sample video playing by itself with its labeled plates logged, a recorded video's plates logged once each, and a phone's screen, with no console errors or failed requests. Main is then deployed |
+| Pages | Browser build | The pipeline compiled to WebAssembly and the site built; the sample videos read natively, every labeled plate required; the WebAssembly build against the native one on every sample photo; then the site in headless Chrome: every sample photo read as labeled and as natively, the inspector, keys, settings, an upload, the camera, the first sample video playing by itself, slowed to ¼× by its speed button, with its labeled plates logged, a recorded video's plates logged once each, and a phone's screen, with no console errors or failed requests. Main is then deployed |
 
 [`web/capture.mjs`](web/capture.mjs) regenerates this README's images and the link preview from the built site.
 

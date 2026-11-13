@@ -1,18 +1,17 @@
 // The camera and video modes: read frames as fast as the networks allow, follow the plates with the C++ tracker,
-// and log each plate once it is read confidently.
+// and log each plate once it is read confidently. A video plays at its own pace: each time the reader is free, it
+// takes the frame on screen, and on every frame shown in between, the plates are drawn where they have moved to.
 
-// Read less often than this in each second of a video, and a plate that passes quickly is missed: a video plays
-// slower when the reader can't keep up, down to a quarter of its speed.
-const READS_PER_SECOND = 20;
-const SLOWEST = 0.25;
+const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 export class Live {
-  constructor({ engine, video, onResult, onEvents, onState }) {
+  constructor({ engine, video, onResult, onEvents, onState, onPresent }) {
     this.engine = engine;
     this.video = video;
     this.onResult = onResult;
     this.onEvents = onEvents;
     this.onState = onState;
+    this.onPresent = onPresent;
     this.stream = null;
     this.kind = null; // 'camera' or 'video'
     this.running = false;
@@ -20,33 +19,9 @@ export class Live {
     this.generation = 0;
     this.facing = 'environment';
     this.frames = [];
-    this.pacing = true;
-    this.rate = 1;
-    this.lastRead = null; // when the last read finished, for the pace; forgotten across a pause or a jump
+    this.speed = 1;
+    this.lastFrame = null; // the timestamp of the frame read last, so that none is read twice
     this.video.addEventListener('ended', () => this.ended());
-    this.video.addEventListener('seeking', () => {
-      this.lastRead = null;
-    });
-  }
-
-  // Whether a video slows down to the reader's pace; otherwise it plays at its own speed and frames are skipped.
-  setPacing(pacing) {
-    this.pacing = pacing;
-    if (!pacing) this.setRate(1);
-  }
-
-  setRate(rate) {
-    this.rate = rate;
-    if (Math.abs(this.video.playbackRate - rate) > 0.01) this.video.playbackRate = rate;
-  }
-
-  // After each read: slow down at once when reads take longer, so a plate coming into view is read from its first
-  // frames, and speed up gently when they are quick again.
-  pace(interval) {
-    if (this.kind !== 'video' || !this.pacing || !(interval > 0)) return;
-    const target = Math.min(1, Math.max(SLOWEST, 1000 / READS_PER_SECOND / interval));
-    const step = Math.max(0.02, 0.25 * (target - this.rate));
-    this.setRate(Math.round(100 * (target < this.rate ? target : Math.min(target, this.rate + step))) / 100);
   }
 
   async startCamera(facing = this.facing) {
@@ -84,21 +59,30 @@ export class Live {
       this.video.onloadedmetadata = resolve;
       this.video.onerror = () => reject(new Error('This browser cannot play that video'));
     });
+    this.video.playbackRate = this.speed;
     await this.video.play();
     this.begin('video');
   }
 
+  // How fast videos play: slower, and the reader sees more frames of each plate.
+  setSpeed(speed) {
+    this.speed = speed;
+    if (this.kind === 'video') this.video.playbackRate = speed;
+  }
+
   begin(kind) {
     this.kind = kind;
-    this.setRate(1);
-    this.lastRead = null;
+    if (kind === 'video') this.video.playbackRate = this.speed;
     this.running = true;
     this.paused = false;
     this.started = performance.now();
+    this.lastFrame = null;
     this.engine.resetTracks();
     this.frames = [];
     this.onState({ running: true, paused: false, kind });
-    this.loop(++this.generation);
+    this.generation += 1;
+    this.loop(this.generation);
+    this.present(this.generation);
   }
 
   stop() {
@@ -121,7 +105,6 @@ export class Live {
   toggle() {
     if (!this.running) return;
     this.paused = !this.paused;
-    this.lastRead = null;
     if (this.paused) this.video.pause();
     else this.video.play();
     this.onState({ running: true, paused: this.paused, kind: this.kind });
@@ -136,23 +119,78 @@ export class Live {
     this.onState({ running: false, paused: false, kind: 'video', ended: true });
   }
 
+  // On every frame the video shows, its time on the tracker's clock: a video's own time, or the camera's since it
+  // started.
+  present(generation) {
+    const video = this.video;
+    const step = (now, metadata) => {
+      if (!this.running || generation !== this.generation) return;
+      this.onPresent(this.kind === 'camera' ? now - this.started : (metadata?.mediaTime ?? video.currentTime) * 1000);
+      schedule();
+    };
+    const schedule = () => {
+      if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(step);
+      else requestAnimationFrame((now) => step(now));
+    };
+    schedule();
+  }
+
+  // Resolves when the video shows its next frame, or after a quarter second without one.
+  nextFrame() {
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, 250);
+      const done = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      if (this.video.requestVideoFrameCallback) this.video.requestVideoFrameCallback(done);
+      else requestAnimationFrame(done);
+    });
+  }
+
+  // The frame on screen as an ImageBitmap, with its time on the tracker's clock, or null if it was read already. A
+  // video's frame carries its own timestamp, so the plates' motion is measured between the frames' true times.
+  async capture() {
+    const video = this.video;
+    if (typeof VideoFrame === 'function') {
+      const source = new VideoFrame(video);
+      try {
+        if (source.timestamp === this.lastFrame) return null;
+        this.lastFrame = source.timestamp;
+        const timestamp = this.kind === 'camera' ? performance.now() - this.started : source.timestamp / 1000;
+        return { frame: await createImageBitmap(source), timestamp };
+      } finally {
+        source.close();
+      }
+    }
+    const timestamp = this.kind === 'camera' ? performance.now() - this.started : video.currentTime * 1000;
+    if (timestamp === this.lastFrame) return null;
+    this.lastFrame = timestamp;
+    return { frame: await createImageBitmap(video), timestamp };
+  }
+
   async loop(generation) {
     while (this.running && generation === this.generation) {
       const video = this.video;
       if (this.paused || video.readyState < 2 || video.videoWidth === 0) {
-        await new Promise((resolve) => setTimeout(resolve, 60));
+        await sleep(60);
         continue;
       }
-      const timestamp = this.kind === 'camera' ? performance.now() - this.started : video.currentTime * 1000;
-      let frame;
+      let captured;
       let copy;
       try {
-        frame = await createImageBitmap(video);
-        copy = await createImageBitmap(frame);
+        captured = await this.capture();
+        if (!captured) {
+          await this.nextFrame();
+          continue;
+        }
+        copy = await createImageBitmap(captured.frame);
       } catch {
-        await new Promise((resolve) => setTimeout(resolve, 30));
+        captured?.frame.close();
+        await sleep(30);
         continue;
       }
+      const { frame, timestamp } = captured;
       const start = performance.now();
       let result;
       try {
@@ -166,18 +204,14 @@ export class Live {
         copy.close();
         return;
       }
-      const now = performance.now();
-      this.frames.push(now);
+      this.frames.push(performance.now());
       while (this.frames.length > 20) this.frames.shift();
       const elapsed = (this.frames.at(-1) - this.frames[0]) / Math.max(1, this.frames.length - 1);
-      if (this.lastRead !== null) this.pace(now - this.lastRead);
-      this.lastRead = now;
       const info = {
         width: copy.width,
         height: copy.height,
         latency: performance.now() - start,
         fps: this.frames.length > 1 ? 1000 / elapsed : 0,
-        rate: this.kind === 'video' ? this.rate : 1,
         timestamp,
       };
       this.onResult(result, info, copy);

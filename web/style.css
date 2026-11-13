@@ -652,6 +652,12 @@ kbd {
   font: 700 10px/14px var(--mono);
 }
 
+.button.speed {
+  min-width: 52px;
+  justify-content: center;
+  font: 700 13px/1 var(--mono);
+}
+
 .sample-time {
   position: absolute;
   right: 5px;

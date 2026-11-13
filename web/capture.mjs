@@ -3,9 +3,11 @@
 //   docs/assets/photo.png   a sample read, with one plate inspected
 //   docs/assets/video.png   the first sample video followed by the tracker, with the plate log
 //   docs/assets/demo.gif    a tour: samples read one after another, a plate inspected (needs ffmpeg)
+//   docs/assets/video.webp  a sample video read as it plays, its plates followed and logged (needs ffmpeg, and
+//                           Python with Pillow, from tools/requirements.txt)
 //   web/social.png          the link preview, from web/social-card.html
 //
-//   npm ci --prefix web && node web/capture.mjs SITE_DIR [photo] [video] [tour] [social]
+//   npm ci --prefix web && node web/capture.mjs SITE_DIR [photo] [video] [tour] [videotour] [social]
 //
 // Name some of them to capture only those. Rebuild the site afterwards, so it serves the new social.png.
 import { execFileSync } from 'node:child_process';
@@ -18,7 +20,7 @@ import { serve } from './serve.mjs';
 
 const [siteDir, ...only] = process.argv.slice(2);
 if (!siteDir) {
-  console.error('usage: node web/capture.mjs SITE_DIR [photo] [video] [tour] [social]');
+  console.error('usage: node web/capture.mjs SITE_DIR [photo] [video] [tour] [videotour] [social]');
   process.exit(2);
 }
 const wanted = (name) => only.length === 0 || only.includes(name);
@@ -135,6 +137,47 @@ if (wanted('tour')) {
     join(assets, 'demo.gif'),
   ]);
   console.log('docs/assets/demo.gif');
+}
+
+// The video tour: the 2CV parade read as it plays, on WebGPU where there is one, from its first frame to its last.
+if (wanted('videotour')) {
+  const videos = JSON.parse(readFileSync(join(siteDir, 'samples', 'videos.json'), 'utf8'));
+  const index = Math.max(0, videos.findIndex((sample) => sample.id === 'nl-2cv-parade'));
+  const tourPage = await browser.newPage();
+  tourPage.on('pageerror', (error) => console.error(`page error: ${error.message}`));
+  await tourPage.evaluateOnNewDocument(() => localStorage.setItem('lpr-theme', 'dark'));
+  await tourPage.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
+  await tourPage.goto(`${site}?video=${videos[index].id}`, { waitUntil: 'load' });
+  await tourPage.waitForFunction(() => document.querySelector('#video').currentTime > 0.5, { timeout: 180000 });
+  await tourPage.mouse.move(10, 890);
+  const recording = join(tmpdir(), 'lpr-video-tour.webm');
+  rmSync(recording, { force: true });
+  const recorder = await tourPage.screencast({ path: recording });
+  // Started again from the beginning, with an empty log.
+  await tourPage.click(`#video-samples .sample:nth-child(${index + 1})`);
+  await tourPage.waitForFunction(() => document.querySelector('#video').ended, { timeout: 120000, polling: 100 });
+  await sleep(1200);
+  await recorder.stop();
+  await tourPage.close();
+  // An animated WebP: a GIF of a video's frames is four times the size.
+  const frames = join(tmpdir(), 'lpr-video-tour');
+  rmSync(frames, { recursive: true, force: true });
+  mkdirSync(frames);
+  execFileSync('ffmpeg', [
+    '-loglevel', 'error', '-ss', '0.3', '-i', recording,
+    '-vf', 'fps=12,scale=900:-1:flags=lanczos', join(frames, 'f%04d.png'),
+  ]);
+  execFileSync('python3', [
+    '-c',
+    `import glob, sys
+from PIL import Image
+frames = [Image.open(path).convert('RGB') for path in sorted(glob.glob(sys.argv[1] + '/*.png'))]
+frames[0].save(sys.argv[2], save_all=True, append_images=frames[1:], duration=83, loop=0, quality=50, method=6)`,
+    frames,
+    join(assets, 'video.webp'),
+  ]);
+  rmSync(frames, { recursive: true, force: true });
+  console.log('docs/assets/video.webp');
 }
 
 // The link preview.

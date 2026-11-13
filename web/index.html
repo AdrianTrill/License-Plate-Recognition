@@ -125,6 +125,7 @@
         <div class="tray-live" data-for="video" hidden>
           <button class="button primary" id="open-video" title="MP4 or WebM: dashcams, gates, and parking lots work best"><svg><use href="#i-upload"/></svg>Open a video</button>
           <button class="button" id="video-toggle" hidden><svg><use href="#i-pause"/></svg><span>Pause</span></button>
+          <button class="button speed" id="video-speed" aria-label="Speed 1×" title="Playback speed: slower, and the reader sees more frames of each plate" hidden>1×</button>
           <div class="samples" id="video-samples" role="listbox" aria-label="Sample videos"></div>
         </div>
       </div>
@@ -188,10 +189,6 @@
     <label class="setting toggle">
       <input type="checkbox" id="labels" checked>
       <span class="setting-label">Label plates on the image</span>
-    </label>
-    <label class="setting toggle">
-      <input type="checkbox" id="pacing" checked>
-      <span class="setting-label">Slow videos down to read every plate</span>
     </label>
   </div>
 

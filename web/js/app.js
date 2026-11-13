@@ -33,10 +33,24 @@ const log = new PlateLog($('#plates'), {
   onSelect: (ids) => viewer.setSelected(liveTrack(ids)),
   onHover: (ids) => viewer.setHover(liveTrack(ids)),
 });
-const live = new Live({ engine, video: $('#video'), onResult: liveResult, onEvents: liveEvents, onState: liveState });
+const live = new Live({
+  engine,
+  video: $('#video'),
+  onResult: liveResult,
+  onEvents: liveEvents,
+  onState: liveState,
+  onPresent: (time) => viewer.present(time),
+});
+// How long a plate the detector missed is still drawn, moving on as it was.
+const COAST_MS = 250;
+const SPEEDS = [
+  { rate: 1, label: '1×' },
+  { rate: 0.5, label: '½×' },
+  { rate: 0.25, label: '¼×' },
+];
 
 function loadSettings() {
-  const defaults = { threshold: 0.4, iou: 0.45, gpu: true, labels: true, pacing: true };
+  const defaults = { threshold: 0.4, iou: 0.45, gpu: true, labels: true };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem('lpr-settings') ?? '{}') };
   } catch {
@@ -84,6 +98,7 @@ async function start() {
     ]);
     state.ready = true;
     engine.setOptions(settings.threshold, settings.iou);
+    state.backend = ready.backend;
     const label = ready.backend === 'webgpu' ? 'WebGPU' : 'WebAssembly';
     $('#runtime').dataset.state = 'ready';
     $('#runtime-label').textContent = label;
@@ -207,6 +222,11 @@ async function playVideo(source, { labels = null, credit = null } = {}) {
     await live.startVideo(source);
   } catch (error) {
     toast(error.message, 'error');
+    return;
+  }
+  if (state.backend !== 'webgpu' && live.speed === 1 && !state.speedHinted) {
+    state.speedHinted = true;
+    toast('Without WebGPU fewer frames are read: at ½× speed, plates that pass quickly are read too');
   }
 }
 
@@ -344,13 +364,19 @@ function liveResult(result, info, frame) {
   if (!viewer.live || viewer.source?.width !== info.width || viewer.source?.height !== info.height) {
     viewer.showVideo(info.width, info.height);
   }
-  const tracks = result.tracking.tracks.filter((track) => track.visible);
+  // Drawn: plates seen twice, so that they have a velocity to be drawn where they have moved to, and kept a moment
+  // when a frame misses them; logged views come only from the frames that found them.
+  const tracks = result.tracking.tracks.filter(
+    (track) => track.seen > 1 && info.timestamp - track.last_seen_ms <= COAST_MS,
+  );
   state.liveTracks = tracks;
   viewer.setPlates(tracks.map((track) => ({ ...track, faded: !track.reported })));
   log.visible(new Set(tracks.map((track) => track.id)));
-  log.refresh(tracks, frame);
-  const speed = info.rate < 1 ? ` · ${info.rate.toFixed(2).replace(/0$/, '')}× speed` : '';
-  $('#hud-stats').textContent = `${info.fps.toFixed(1)} fps · ${milliseconds(info.latency)}${speed}`;
+  log.refresh(
+    result.tracking.tracks.filter((track) => track.visible),
+    frame,
+  );
+  $('#hud-stats').textContent = `${info.fps.toFixed(1)} fps · ${milliseconds(info.latency)}`;
   const now = performance.now();
   if (!state.stagesShown || now - state.stagesShown > 400) {
     state.stagesShown = now;
@@ -376,6 +402,7 @@ function liveState({ running, paused, kind, ended, error }) {
   cameraToggle.querySelector('use').setAttribute('href', running && kind === 'camera' ? '#i-stop' : '#i-camera');
   const videoToggle = $('#video-toggle');
   videoToggle.hidden = !(running || ended) || kind !== 'video';
+  $('#video-speed').hidden = videoToggle.hidden;
   videoToggle.querySelector('span').textContent = ended ? 'Play again' : paused ? 'Play' : 'Pause';
   videoToggle.querySelector('use').setAttribute('href', ended || paused ? '#i-play' : '#i-pause');
   $('#timeline').hidden = kind !== 'video';
@@ -528,6 +555,13 @@ $('#video-toggle').addEventListener('click', async () => {
     live.toggle();
   }
 });
+$('#video-speed').addEventListener('click', () => {
+  const index = SPEEDS.findIndex((speed) => speed.rate === live.speed);
+  const next = SPEEDS[(index + 1) % SPEEDS.length];
+  live.setSpeed(next.rate);
+  $('#video-speed').textContent = next.label;
+  $('#video-speed').setAttribute('aria-label', `Speed ${next.label}`);
+});
 $('#video').addEventListener('timeupdate', () => {
   const video = $('#video');
   if (!video.duration) return;
@@ -620,13 +654,7 @@ $('#labels').addEventListener('change', () => {
   saveSettings();
   viewer.setLabels(settings.labels);
 });
-$('#pacing').checked = settings.pacing;
-live.setPacing(settings.pacing);
-$('#pacing').addEventListener('change', () => {
-  settings.pacing = $('#pacing').checked;
-  saveSettings();
-  live.setPacing(settings.pacing);
-});
+
 
 /* Theme and help */
 

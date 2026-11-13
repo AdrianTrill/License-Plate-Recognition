@@ -205,7 +205,14 @@ await check('the video mode plays its first sample by itself, and logs the plate
   await page.keyboard.press('v');
   await page.waitForFunction(() => !document.querySelector('#hud').hidden, { timeout: 60000 });
   expect(new URL(page.url()).searchParams.get('video') === first.id, 'the address names the video');
-  // A slow runner's WebAssembly reads every plate too: the video slows down to the reader's pace.
+  // At a quarter speed, a slow runner's WebAssembly reads enough frames of every plate.
+  await page.click('#video-speed');
+  await page.click('#video-speed');
+  const speed = await page.evaluate(() => ({
+    rate: document.querySelector('#video').playbackRate,
+    label: document.querySelector('#video-speed').textContent,
+  }));
+  expect(speed.rate === 0.25 && speed.label === '¼×', `the speed button slows the video (${JSON.stringify(speed)})`);
   await page.waitForFunction(
     (labels) => {
       const logged = [...document.querySelectorAll('#plates .plate-card .plate-chip')].map((chip) =>
@@ -218,11 +225,6 @@ await check('the video mode plays its first sample by itself, and logs the plate
   );
   const logged = (await plates()).map((plate) => plate.text);
   expect(new Set(logged).size === logged.length, `each plate once: ${logged.join(', ')}`);
-  const { rate, hud } = await page.evaluate(() => ({
-    rate: document.querySelector('#video').playbackRate,
-    hud: document.querySelector('#hud-stats').textContent,
-  }));
-  expect(rate === 1 || hud.includes('× speed'), `a slowed video shows its speed (${rate}, "${hud}")`);
   expect(
     (await page.$eval('#credit', (node) => node.textContent)).includes(first.author),
     "the video's author is credited",
@@ -233,7 +235,12 @@ await check('the video mode plays its first sample by itself, and logs the plate
     await page.waitForFunction((id) => new URL(location.href).searchParams.get('video') === id, { timeout: 10000 }, second.id);
     const selected = await page.$eval('#video-samples .sample:nth-child(2)', (node) => node.getAttribute('aria-selected'));
     expect(selected === 'true', 'ArrowRight opens the next sample video');
+    await page.waitForFunction(() => !document.querySelector('#video-speed').hidden, { timeout: 30000 });
+    const rate = await page.$eval('#video', (video) => video.playbackRate);
+    expect(rate === 0.25, `the speed carries over to the next video (${rate})`);
   }
+  await page.click('#video-speed');
+  expect((await page.$eval('#video', (video) => video.playbackRate)) === 1, 'and goes back to normal');
 });
 
 await check('a video is followed by the tracker, and its plates logged once each', async () => {

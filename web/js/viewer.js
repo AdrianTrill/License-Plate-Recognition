@@ -5,6 +5,8 @@ import { percent, sureness } from './format.js';
 const COLORS = { high: '#3ddc97', mid: '#f5b544', low: '#f87171', unread: '#94a3b8' };
 const LABEL_FONT = '700 15px ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace';
 const SMALL_FONT = '600 11px ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace';
+// A plate in a video is drawn where it has moved to since its frame was read, for no longer than this.
+const LONGEST_GUESS = 250;
 
 export class Viewer {
   constructor(canvas, video) {
@@ -14,6 +16,7 @@ export class Viewer {
     this.bitmap = null;
     this.source = null; // { width, height } of what the plates' boxes refer to
     this.live = false;
+    this.time = null; // a video's time on screen, on the tracker's clock
     this.plates = [];
     this.labels = true;
     this.selected = -1;
@@ -46,22 +49,31 @@ export class Viewer {
     this.source = { width, height };
     this.canvas.parentElement.style.setProperty('--aspect', `${width} / ${height}`);
     this.live = true;
+    this.time = null;
     this.plates = [];
     this.selected = -1;
     this.draw();
+  }
+
+  // A new frame of the video is on screen.
+  present(time) {
+    this.time = time;
+    if (this.live && this.plates.length > 0) this.draw();
   }
 
   clear() {
     this.bitmap = null;
     this.source = null;
     this.live = false;
+    this.time = null;
     this.plates = [];
     this.selected = -1;
     this.hover = -1;
     this.draw();
   }
 
-  // Plates as { box: [x1, y1, x2, y2], text, confidence, faded? }, in the source's pixels.
+  // Plates as { box: [x1, y1, x2, y2], text, confidence, faded? }, in the source's pixels; a video's plates also have
+  // the time their box was seen at and their velocity, in pixels per millisecond (last_seen_ms, velocity).
   setPlates(plates, { animate = false } = {}) {
     this.plates = plates;
     if (this.selected >= plates.length) this.selected = -1;
@@ -125,7 +137,7 @@ export class Viewer {
     let found = -1;
     let smallest = Infinity;
     this.plates.forEach((plate, index) => {
-      const [x1, y1, x2, y2] = plate.box;
+      const [x1, y1, x2, y2] = this.shown(plate);
       const area = (x2 - x1) * (y2 - y1);
       if (x >= x1 - margin && x <= x2 + margin && y >= y1 - margin && y <= y2 + margin && area < smallest) {
         found = index;
@@ -170,7 +182,7 @@ export class Viewer {
     const focus = this.hover >= 0 ? this.hover : this.pinned ? this.selected : -1;
     if (focus >= 0 && !this.live) {
       // Dim everything but the plate in focus.
-      const [x1, y1, x2, y2] = this.screenBox(this.plates[focus].box, layout);
+      const [x1, y1, x2, y2] = this.screenBox(this.shown(this.plates[focus]), layout);
       context.save();
       context.fillStyle = 'rgba(3, 5, 8, 0.45)';
       context.beginPath();
@@ -181,9 +193,27 @@ export class Viewer {
     }
 
     const order = this.plates.map((_, index) => index).sort((a, b) => (a === focus) - (b === focus));
+    context.save();
+    if (this.live) {
+      // A plate drawn ahead of its last frame may be leaving the video: keep it to the video's area.
+      context.beginPath();
+      context.rect(layout.left, layout.top, this.source.width * layout.scale, this.source.height * layout.scale);
+      context.clip();
+    }
     for (const index of order) {
       this.drawPlate(this.plates[index], layout, index === focus, focus >= 0 && index !== focus);
     }
+    context.restore();
+  }
+
+  // Where a plate is on screen now, in the source's pixels: in a video, moved on at its velocity since it was seen.
+  shown(plate) {
+    if (!this.live || this.time === null || !plate.velocity) return plate.box;
+    const elapsed = Math.min(LONGEST_GUESS, Math.max(0, this.time - plate.last_seen_ms));
+    const dx = plate.velocity[0] * elapsed;
+    const dy = plate.velocity[1] * elapsed;
+    const [x1, y1, x2, y2] = plate.box;
+    return [x1 + dx, y1 + dy, x2 + dx, y2 + dy];
   }
 
   screenBox(box, layout) {
@@ -197,7 +227,7 @@ export class Viewer {
 
   drawPlate(plate, layout, focused, dimmed) {
     const context = this.context;
-    let [x1, y1, x2, y2] = this.screenBox(plate.box, layout);
+    let [x1, y1, x2, y2] = this.screenBox(this.shown(plate), layout);
     // New readings grow out of their centers.
     const grow = 0.6 + 0.4 * easeOut(this.appear);
     const cx = (x1 + x2) / 2;
