@@ -285,6 +285,40 @@ await check('a video is followed by the tracker, and its plates logged once each
   await page.keyboard.press('p');
 });
 
+await check('a video is read where video frames carry no time, as in Safari and Firefox', async () => {
+  // Their VideoFrames of a video element are all stamped 0; the page must take its frames' times from elsewhere.
+  const sample = videos.find((video) => video.id === 'fr-lyon-parking') ?? videos[0];
+  const other = await browser.newPage();
+  other.on('pageerror', (error) => problems.push(`uncaught: ${error.message}`));
+  other.on('console', (message) => {
+    if (message.type() === 'error') problems.push(`console: ${message.text()}`);
+  });
+  await other.evaluateOnNewDocument(() => {
+    localStorage.setItem('lpr-settings', JSON.stringify({ gpu: false }));
+    if (window.VideoFrame) {
+      window.VideoFrame = class extends window.VideoFrame {
+        get timestamp() {
+          return 0;
+        }
+      };
+    }
+  });
+  try {
+    await other.setViewport({ width: 1280, height: 800 });
+    await other.goto(`${site}?video=${sample.id}`, { waitUntil: 'load' });
+    await other.waitForFunction(
+      (labels) => {
+        const logged = [...document.querySelectorAll('#plates .plate-chip')].map((chip) => chip.getAttribute('aria-label'));
+        return labels.every((label) => logged.includes(label));
+      },
+      { timeout: 120000 },
+      sample.plates,
+    );
+  } finally {
+    await other.close();
+  }
+});
+
 await check('a phone screen fits without sideways scrolling', async () => {
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await page.goto(`${site}?sample=${samples[1].id}`, { waitUntil: 'load' });

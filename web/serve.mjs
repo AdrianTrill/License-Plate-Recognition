@@ -33,11 +33,31 @@ export function serve(directory, port = 0) {
       response.writeHead(404).end();
       return;
     }
-    response.writeHead(200, {
+    const { size } = statSync(file);
+    const headers = {
       'content-type': TYPES[extname(file)] ?? 'application/octet-stream',
       'cache-control': 'no-store',
-    });
-    createReadStream(file).pipe(response);
+      'accept-ranges': 'bytes',
+    };
+    // Safari plays a video only from a server that can send it in ranges.
+    const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+    let start = 0;
+    let end = size - 1;
+    if (range && (range[1] || range[2])) {
+      start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+      end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+      if (start > end) {
+        response.writeHead(416, { 'content-range': `bytes */${size}` }).end();
+        return;
+      }
+      headers['content-range'] = `bytes ${start}-${end}/${size}`;
+    }
+    response.writeHead(headers['content-range'] ? 206 : 200, { ...headers, 'content-length': end - start + 1 });
+    if (request.method === 'HEAD' || size === 0) {
+      response.end();
+      return;
+    }
+    createReadStream(file, { start, end }).pipe(response);
   });
   return new Promise((ready) => {
     server.listen(port, '127.0.0.1', () => ready({ server, url: `http://127.0.0.1:${server.address().port}/` }));

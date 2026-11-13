@@ -20,7 +20,11 @@ export class Live {
     this.facing = 'environment';
     this.frames = [];
     this.speed = 1;
-    this.lastFrame = null; // the timestamp of the frame read last, so that none is read twice
+    // Chrome stamps a VideoFrame of the video with the frame's own time; Safari and Firefox stamp every frame 0.
+    this.frameClock = typeof VideoFrame === 'function';
+    this.shown = null; // the frame the video showed last: { time, count }, from requestVideoFrameCallback
+    this.lastStamp = null; // the frame read last, by its timestamp and by the count of frames shown, so that none
+    this.lastCount = null; // is read twice
     this.video.addEventListener('ended', () => this.ended());
   }
 
@@ -76,7 +80,9 @@ export class Live {
     this.running = true;
     this.paused = false;
     this.started = performance.now();
-    this.lastFrame = null;
+    this.shown = null;
+    this.lastStamp = null;
+    this.lastCount = null;
     this.engine.resetTracks();
     this.frames = [];
     this.onState({ running: true, paused: false, kind });
@@ -125,7 +131,9 @@ export class Live {
     const video = this.video;
     const step = (now, metadata) => {
       if (!this.running || generation !== this.generation) return;
-      this.onPresent(this.kind === 'camera' ? now - this.started : (metadata?.mediaTime ?? video.currentTime) * 1000);
+      const time = this.kind === 'camera' ? now - this.started : (metadata?.mediaTime ?? video.currentTime) * 1000;
+      this.shown = { time, count: metadata?.presentedFrames };
+      this.onPresent(time);
       schedule();
     };
     const schedule = () => {
@@ -148,31 +156,52 @@ export class Live {
     });
   }
 
-  // The frame on screen as an ImageBitmap, with its time on the tracker's clock, or null if it was read already. A
-  // video's frame carries its own timestamp, so the plates' motion is measured between the frames' true times.
+  // The frame on screen as an ImageBitmap, with its time on the tracker's clock, or null if it was read already. In
+  // Chrome a VideoFrame of the video carries the frame's own timestamp, so the plates' motion is measured between the
+  // frames' true times; elsewhere the time is that of the frame the video showed last.
   async capture() {
     const video = this.video;
-    if (typeof VideoFrame === 'function') {
-      const source = new VideoFrame(video);
+    const shown = this.shown;
+    const clock = this.kind === 'camera' ? performance.now() - this.started : null;
+    if (this.frameClock) {
+      let source = null;
       try {
-        if (source.timestamp === this.lastFrame) return null;
-        this.lastFrame = source.timestamp;
-        const timestamp = this.kind === 'camera' ? performance.now() - this.started : source.timestamp / 1000;
-        return { frame: await createImageBitmap(source), timestamp };
-      } finally {
-        source.close();
+        source = new VideoFrame(video);
+      } catch {
+        this.frameClock = false;
+      }
+      if (source) {
+        try {
+          const time = source.timestamp / 1000;
+          // A stamp far from the video's time, or one that stays while the video shows new frames, is no clock.
+          const off = this.kind === 'video' && Math.abs(time - video.currentTime * 1000) > 200;
+          const stuck =
+            source.timestamp === this.lastStamp && shown?.count !== undefined && shown.count > this.lastCount + 1;
+          if (off || stuck) {
+            this.frameClock = false;
+          } else if (source.timestamp === this.lastStamp) {
+            return null;
+          } else {
+            this.lastStamp = source.timestamp;
+            this.lastCount = shown?.count ?? null;
+            return { frame: await createImageBitmap(source), timestamp: clock ?? time };
+          }
+        } finally {
+          source.close();
+        }
       }
     }
-    const timestamp = this.kind === 'camera' ? performance.now() - this.started : video.currentTime * 1000;
-    if (timestamp === this.lastFrame) return null;
-    this.lastFrame = timestamp;
-    return { frame: await createImageBitmap(video), timestamp };
+    if (shown?.count !== undefined) {
+      if (shown.count === this.lastCount) return null;
+      this.lastCount = shown.count;
+    }
+    return { frame: await createImageBitmap(video), timestamp: clock ?? shown?.time ?? video.currentTime * 1000 };
   }
 
   async loop(generation) {
     while (this.running && generation === this.generation) {
       const video = this.video;
-      if (this.paused || video.readyState < 2 || video.videoWidth === 0) {
+      if (this.paused || video.seeking || video.readyState < 2 || video.videoWidth === 0) {
         await sleep(60);
         continue;
       }
