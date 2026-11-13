@@ -61,10 +61,9 @@ void PlateTracker::reset() {
 
 Box PlateTracker::predicted(std::size_t index, double timestamp_ms) const noexcept {
     const Track& track = tracks_[index];
-    const Fusion& fusion = fusions_[index];
     const auto elapsed = static_cast<float>(timestamp_ms - track.last_seen_ms);
-    const float dx = fusion.velocity_x * elapsed;
-    const float dy = fusion.velocity_y * elapsed;
+    const float dx = track.velocity_x * elapsed;
+    const float dy = track.velocity_y * elapsed;
     return Box{track.box.x1 + dx, track.box.y1 + dy, track.box.x2 + dx, track.box.y2 + dy};
 }
 
@@ -77,8 +76,8 @@ void PlateTracker::absorb(std::size_t index, const PlateResult& plate, double ti
         const auto vx = static_cast<float>((center_x(box) - center_x(track.box)) / elapsed);
         const auto vy = static_cast<float>((center_y(box) - center_y(track.box)) / elapsed);
         const bool first = track.seen == 1;
-        fusion.velocity_x = first ? vx : (0.5F * fusion.velocity_x) + (0.5F * vx);
-        fusion.velocity_y = first ? vy : (0.5F * fusion.velocity_y) + (0.5F * vy);
+        track.velocity_x = first ? vx : (0.5F * track.velocity_x) + (0.5F * vx);
+        track.velocity_y = first ? vy : (0.5F * track.velocity_y) + (0.5F * vy);
     }
     track.box = box;
     track.last_seen_ms = timestamp_ms;
@@ -128,10 +127,12 @@ void PlateTracker::absorb(std::size_t index, const PlateResult& plate, double ti
 }
 
 std::vector<TrackEvent> PlateTracker::update(const FrameResult& frame, double timestamp_ms) {
-    for (Track& track : tracks_) {
-        track.visible = false;
-    }
     const std::size_t track_count = tracks_.size();
+    std::vector<bool> continuing(track_count);  // seen in the frame before this one
+    for (std::size_t t = 0; t < track_count; ++t) {
+        continuing[t] = tracks_[t].visible;
+        tracks_[t].visible = false;
+    }
     const std::size_t plate_count = frame.plates.size();
     std::vector<Box> predictions(track_count);
     for (std::size_t t = 0; t < track_count; ++t) {
@@ -164,7 +165,9 @@ std::vector<TrackEvent> PlateTracker::update(const FrameResult& frame, double ti
     assign(candidates, true);
 
     // A second chance for plates that moved too far between frames to overlap: the nearest track of about the same
-    // size, within a plate's width.
+    // size, within a plate's width. A slow device reads a few frames a second, and a passing car's plate can move two
+    // or three widths between them, so a track seen in the frame before reaches a width further for each frame's time
+    // since; one missed in it does not, or it could take over a new plate where it was.
     candidates.clear();
     for (std::size_t t = 0; t < track_count; ++t) {
         for (std::size_t p = 0; p < plate_count; ++p) {
@@ -180,7 +183,9 @@ std::vector<TrackEvent> PlateTracker::update(const FrameResult& frame, double ti
             const float dx = center_x(seen) - center_x(expected);
             const float dy = center_y(seen) - center_y(expected);
             const float distance = std::sqrt((dx * dx) + (dy * dy));
-            if (distance <= std::max(expected.width(), seen.width())) {
+            const auto frames = static_cast<float>((timestamp_ms - tracks_[t].last_seen_ms) / options_.reach_ms);
+            const float reach = continuing[t] ? std::clamp(frames, 1.0F, options_.max_reach) : 1.0F;
+            if (distance <= reach * std::max(expected.width(), seen.width())) {
                 candidates.push_back(Candidate{distance, t, p});
             }
         }

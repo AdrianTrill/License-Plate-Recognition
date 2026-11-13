@@ -1,6 +1,7 @@
 #include "lpr/tracker.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -111,6 +112,31 @@ int main() {
                  expect_equal(tracker.tracks().size(), std::size_t{1}, "one track at frame " + std::to_string(i));
              }
              expect_equal(tracker.tracks()[0].reads, 6, "reads");
+             expect(std::abs(tracker.tracks()[0].velocity_x - 2.25F) < 1e-4F, "90 pixels every 40 ms, to the right");
+             expect(std::abs(tracker.tracks()[0].velocity_y) < 1e-6F, "and level");
+         }},
+        {"a plate read only a few times a second is still followed, but not to a plate too far away",
+         [] {
+             lpr::PlateTracker tracker;
+             // 240 pixels, over two plates' widths, every 100 ms: a passing car, on a slow device.
+             for (int i = 0; i < 4; ++i) {
+                 tracker.update(
+                     frame({plate_at(20.0F + (240.0F * static_cast<float>(i)), 300, reading("SLOW1", 0.99F))}),
+                     100.0 * i);
+             }
+             expect_equal(tracker.tracks().size(), std::size_t{1}, "one track");
+             expect_equal(tracker.tracks()[0].reads, 4, "reads");
+             // Another plate, 100 ms after the first was last seen, about nine widths from where it would be.
+             tracker.update(frame({plate_at(100.0F, 20.0F, reading("FAR22", 0.99F))}), 400.0);
+             expect_equal(tracker.tracks().size(), std::size_t{2}, "a track of its own");
+         }},
+        {"a track missed in the frame before keeps to a plate's width",
+         [] {
+             lpr::PlateTracker tracker;
+             tracker.update(frame({plate_at(200, 300, reading("GAP11", 0.99F))}), 0.0);
+             tracker.update(frame({}), 100.0);
+             tracker.update(frame({plate_at(420, 300, reading("NEW22", 0.99F))}), 200.0);
+             expect_equal(tracker.tracks().size(), std::size_t{2}, "a plate two widths away gets a track of its own");
          }},
         {"unconfident tracks are never reported",
          [] {

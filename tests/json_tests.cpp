@@ -82,15 +82,17 @@ int main() {
              track.first_seen_ms = 33.33;
              track.last_seen_ms = 133.36;
              track.best_score = 0.5F;
+             track.velocity_x = 0.25F;
+             track.velocity_y = -0.125F;
              track.reported = true;
              const std::string json = lpr::event_json(lpr::TrackEvent{lpr::TrackEventKind::reported, track}, config);
              const std::string start = R"({"event":"reported","track":{"id":7,"text":"Z9","confidence":0.9044,)"
                                        R"("box":[1.0,2.0,3.0,4.0],"score":0.5000,"seen":5,"reads":4,)";
              expect_equal(json.starts_with(start), true, "event: " + json);
-             expect_equal(json.find(R"("first_seen_ms":33.3,"last_seen_ms":133.4,"reported":true,"visible":false)") !=
-                              std::string::npos,
+             expect_equal(json.find(R"("first_seen_ms":33.3,"last_seen_ms":133.4,"reported":true,"visible":false,)"
+                                    R"("velocity":[0.2500,-0.1250])") != std::string::npos,
                           true,
-                          "times and flags");
+                          "times, flags, and velocity: " + json);
          }},
     });
 }

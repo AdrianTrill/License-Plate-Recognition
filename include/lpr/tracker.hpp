@@ -12,6 +12,9 @@ namespace lpr {
 struct TrackerOptions {
     float match_iou = 0.1F;          // least overlap between a track's predicted box and a detection that continues it
     double max_gap_ms = 1000.0;      // a track unseen for this long has left
+    double reach_ms = 40.0;          // a plate too far to overlap the track it continues from the frame before is
+                                     // followed a plate's width away for each this long between the frames...
+    float max_reach = 4.0F;          // ...and at most this many widths away
     int min_reads = 3;               // reads before a track is reported
     float min_confidence = 0.6F;     // the fused reading's confidence before it is reported
     std::size_t min_characters = 4;  // shorter readings are partial plates, so they are followed but never reported
@@ -27,6 +30,8 @@ struct Track {
     int reads = 0;   // frames whose reading was fused: those where the plate was clear of the frame's edges
     double first_seen_ms = 0.0;
     double last_seen_ms = 0.0;
+    float velocity_x = 0.0F;  // where its box's center was heading when last seen, in pixels per millisecond
+    float velocity_y = 0.0F;
     float best_score = 0.0F;  // the detector's highest score for it
     bool reported = false;    // enough reads, confidently enough
     bool visible = false;     // read in the latest frame
@@ -84,8 +89,6 @@ private:
 
     struct Fusion {
         std::vector<Reads> by_length;
-        float velocity_x = 0.0F;  // the box center's, in pixels per millisecond
-        float velocity_y = 0.0F;
         PlateRead reported;  // the reported text's most confident reading
     };
 

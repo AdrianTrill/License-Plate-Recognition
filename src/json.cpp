@@ -13,6 +13,7 @@ namespace {
 constexpr int kPixelDecimals = 1;
 constexpr int kProbabilityDecimals = 4;
 constexpr int kTimeDecimals = 1;
+constexpr int kVelocityDecimals = 4;
 
 void write_region(JsonWriter& json, const PlateRead& read, const RecognizerConfig& config) {
     json.key("region");
@@ -251,6 +252,9 @@ void write_track(JsonWriter& json, const Track& track, const RecognizerConfig& c
     json.key("last_seen_ms").value(track.last_seen_ms, kTimeDecimals);
     json.key("reported").value(track.reported);
     json.key("visible").value(track.visible);
+    json.key("velocity").begin_array(true);
+    json.value(track.velocity_x, kVelocityDecimals).value(track.velocity_y, kVelocityDecimals);
+    json.end_array();
     write_region(json, track.read, config);
     write_characters(json, track.read);
     json.end_object();
