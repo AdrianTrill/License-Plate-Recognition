@@ -1,7 +1,7 @@
 // The inference worker: ONNX Runtime Web runs the two networks, and the C++ pipeline, compiled to WebAssembly, does
 // everything around them, off the page's main thread. js/engine.js drives it.
 //
-// In:  { type: 'init', base, manifest, gpu }
+// In:  { type: 'init', base, manifest, gpu, small }
 //      { type: 'read', id, bitmap, options?, track?, timestamp?, keepInputs? }   bitmap: ImageBitmap, transferred
 //      { type: 'options', scoreThreshold, iouThreshold }
 //      { type: 'finish-tracks', id }  { type: 'reset-tracks' }
@@ -53,7 +53,7 @@ async function gpuAdapter() {
   }
 }
 
-async function init({ base, manifest, gpu: allowGpu }) {
+async function init({ base, manifest, gpu: allowGpu, small }) {
   if (pipeline) {
     self.postMessage({ type: 'ready', backend, versions: versions() });
     return;
@@ -62,14 +62,17 @@ async function init({ base, manifest, gpu: allowGpu }) {
   // The WebGPU build is twice the size of the WebAssembly one: load only the one that will run.
   ort = await import(`${base}ort/${adapter ? 'ort.webgpu.min.mjs' : 'ort.wasm.min.mjs'}`);
   ort.env.wasm.wasmPaths = `${base}ort/`;
-  // GitHub Pages can't send the cross-origin isolation headers that WebAssembly threads need.
+  // Threads need a cross-origin isolated page, which the service worker makes it (js/isolate.js).
   ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
   ort.env.logLevel = 'error';
 
   const { default: createPipeline } = await import(`${base}lpr.mjs`);
   pipeline = new (await createPipeline({ locateFile: (file) => `${base}${file}` })).Pipeline();
+  // The larger detector, at 640 pixels, finds plates that are small in a large frame.
+  const detectorFile = small && manifest['detector-640'] ? manifest['detector-640'] : manifest.detector;
+  pipeline.setDetectorSize(detectorFile.input.shape[2]);
 
-  const files = [manifest.detector, manifest.recognizer];
+  const files = [detectorFile, manifest.recognizer];
   const total = files.reduce((sum, file) => sum + file.bytes, 0);
   const loaded = [0, 0];
   const progress = () => self.postMessage({ type: 'progress', phase: 'download', loaded: loaded[0] + loaded[1], total });

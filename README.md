@@ -30,7 +30,7 @@ License Plate Recognition finds and reads license plates in photos, videos, and 
 | --- | --- | --- |
 | **[Live demo](#try-it)** | Photos, videos, and the camera, read in the page on WebGPU, or on WebAssembly on four threads, with twelve sample photos and four sample videos. The networks, 13 MB, download once, are checked against their SHA-256, and stay cached | Headless Chrome reads every sample photo, plays a sample video and checks its log, and runs the camera, on every push |
 | **[One pipeline, two runtimes](#one-pipeline-two-runtimes)** | The C++20 pipeline natively with ONNX Runtime, and compiled to WebAssembly with ONNX Runtime Web | On all 444 benchmark photos, the networks' inputs are identical bit for bit and every reading is the same |
-| **[Detection](#how-a-photo-is-read)** | YOLOv9-t at 384 pixels, with its non-maximum suppression moved out of the graph into C++, so its thresholds change as you drag them | The cut graph and the C++ suppression must find exactly the published graph's plates before the model is written |
+| **[Detection](#how-a-photo-is-read)** | YOLOv9-t at 384 pixels, or at 640 for plates that are small in a large frame, with its non-maximum suppression moved out of the graph into C++, so its thresholds change as you drag them | Each cut graph and the C++ suppression must find exactly the published graph's plates before the model is written |
 | **[Reading](#how-a-photo-is-read)** | Ten character slots and 66 regions, and a confidence that is the network's probability for exactly the text it read | Unit tests, and twelve labeled photos from ten countries |
 | **[Video](#following-plates-through-a-video)** | Plates followed from frame to frame, their reads fused, and each one logged once; a video plays at its own speed, shown a fraction of a second behind so that each outline fits its plate in every frame | Unit tests, the four sample videos read natively against their labels, and in the browser |
 | **[Measured accuracy](#measured-accuracy)** | 443 of 444 plates found and 411 read exactly; 96.7% exact among the 90% of reads it is surest of | CI downloads the benchmark, runs it again, and requires the same numbers |
@@ -60,7 +60,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --parallel
 - **The plates** show each reading on a plate of its own, with the region's code on a band, and each character underlined in green, amber, or red by how sure the reader is of it; hovering a character lists the symbols it nearly read instead. For the samples, each reading is checked against the photo's label.
 - **What the reader saw** shows the 128×64 pixels the reader was given for the plate, and its confidence in each of its ten slots; the slots past the end of the plate hold padding.
 - **The pipeline** shows where the time went, stage by stage, colored by where each stage runs: in a network, in the C++ compiled to WebAssembly, or in the browser.
-- **Settings** (<kbd>S</kbd>) change the detector's threshold and the overlap limit of its suppression, and the photo is read again as you drag them; WebGPU can be switched off, and the labels hidden. The page comes in dark and light themes, works on phones, and gives each sample photo and video a link of its own.
+- **Settings** (<kbd>S</kbd>) change the detector's threshold and the overlap limit of its suppression, and the photo is read again as you drag them; WebGPU can be switched off, the labels hidden, and a larger detector chosen for smaller plates. The page comes in dark and light themes, works on phones, and gives each sample photo and video a link of its own.
 
 ## How a photo is read
 
@@ -144,6 +144,7 @@ The [OpenALPR benchmark](https://github.com/openalpr/benchmarks) has 444 photos,
 - **The European misses are all O against 0, and the labels are wrong.** On five Slovak plates, a Czech one, and a British one, the label has the letter O where the plate has a zero: the British plate is `OY09 FEU`, labeled `OYO9FEU`. The reader reads the zero; counting the two as one, every European plate is read.
 - **The American misses are mostly small plates.** 20 of the 25 come from the benchmark's security camera stills, whose plates are 87 pixels wide at the median, some behind a fence; 4 are O against 0. The one Brazilian miss swaps two letters.
 - **Plate formats and repeated reads don't help here.** The European readings already follow their countries' formats, and the reader names one region for the whole United States, whose states each have their own; so choosing between O and 0 by a format would change nothing measured, and could break plates outside the formats, as Romania's red temporary ones. Reading each plate from a few slightly different crops and averaging them, as a video's frames are, read 2 more plates exactly with one set of crops, at twice the reader's time, and 2 fewer with others: noise, not a gain.
+- **A larger detector helps only where plates are small in a large frame.** The same detector at 640 pixels (`--small-plates`, or the demo's settings) finds all 444 of the benchmark's plates but reads 406 exactly, against 411, since these plates are close; on the full 1080p frame of the 2CV parade, before it was cropped for the demo, it reads 8 of its 9 plates against 7, and surer. On the Tour de France clip the samples were chosen from, where plates are small and the frame 720p, it finds plates in 68% more frames, but the reader can't read them, and it logs 15 plates correctly against 18. So it is a setting, off by default.
 - **The confidence can be acted on.** Setting aside the 10% of readings the reader is least sure of leaves 96.7% exact, at a confidence of 0.87 or more; setting aside 20% leaves 97.2%.
 
 **What the numbers leave open.** Each photo labels one plate, so the 37 other detections, many of them real plates in the background, can't be scored, and precision isn't measured. The networks' training sets aren't published photo by photo, so whether they include these photos can't be ruled out. And three countries' plates say little about the other 62 the reader covers; [fast-plate-ocr's validation results](https://github.com/ankandrew/fast-plate-ocr/releases/tag/arg-plates) report its own per-country accuracy.
@@ -159,7 +160,7 @@ On an Apple M4, median over the sample photos:
 | ONNX Runtime Web on WebAssembly, 4 threads, Chrome 157 | 22.6 ms | 18.3 ms | 1 ms | 44 ms |
 | ONNX Runtime Web on WebAssembly, 1 thread, Chrome 157 | 61 ms | 47 ms | 1 ms | 113 ms |
 
-The C++ steps, letterbox, suppression, crops, and decoding, take about a millisecond together in WebAssembly. A 1280×720 video with a plate in view is read at 29 frames a second on WebGPU (35 ms a frame), 15 to 20 on WebAssembly's four threads, and 8 on one. WebAssembly runs on several threads only in a cross-origin isolated page, and GitHub Pages can't send the headers that takes: a service worker ([`web/sw.js`](web/sw.js)) adds them to every response, and on the first visit the page reloads once, when the worker takes over. A browser that won't isolate the page, as in a private window, reads on one thread. `lpr bench IMAGE` times the stages natively.
+The C++ steps, letterbox, suppression, crops, and decoding, take about a millisecond together in WebAssembly. A 1280×720 video with a plate in view is read at 29 frames a second on WebGPU (35 ms a frame), 15 to 20 on WebAssembly's four threads, and 8 on one. WebAssembly runs on several threads only in a cross-origin isolated page, and GitHub Pages can't send the headers that takes: a service worker ([`web/sw.js`](web/sw.js)) adds them to every response, and on the first visit the page reloads once, when the worker takes over. A browser that won't isolate the page, as in a private window, reads on one thread. The detector at 640 pixels takes 29.2 ms natively on one thread, 28.9 ms on WebGPU, and 55.3 ms on WebAssembly's four threads. `lpr bench IMAGE` times the stages natively.
 
 ## Command line
 
@@ -183,7 +184,8 @@ lpr bench [--runs N] IMAGE       time each stage of the pipeline
   --annotate DIR     write each image with its plates drawn into DIR
   --threshold X      the detector's score threshold (default 0.4)
   --iou X            the overlap above which non-maximum suppression drops a box (default 0.45)
-  --models DIR       where detector.onnx and recognizer.onnx are
+  --small-plates     detect at 640 pixels instead of 384: finds smaller plates, about 2.5 times slower
+  --models DIR       where the networks are
   --threads N        threads for each network (default: ONNX Runtime's choice)
   --trace            add fingerprints of the networks' inputs to the JSON, to compare builds
 ```
@@ -273,7 +275,7 @@ node web/ui-check.mjs build-wasm/site native.json                # the site in h
 | CI | Sanitizers | The same tests under AddressSanitizer, LeakSanitizer, and UndefinedBehaviorSanitizer |
 | CI | Format | clang-format |
 | CI | Evaluation | The benchmark downloaded and read again; the counts must match [`docs/evaluation.json`](docs/evaluation.json) |
-| Pages | Browser build | The pipeline compiled to WebAssembly and the site built; the tests of where a video's plates are drawn; the sample videos read natively, every labeled plate required; the WebAssembly build against the native one on every sample photo; then the site in headless Chrome, served without isolation's headers as GitHub Pages serves it: the page isolating itself with its service worker and reading on several threads, every sample photo read as labeled and as natively, the inspector, keys, settings, an upload, the camera, the first sample video playing by itself, slowed to ¼× by its speed button, with its labeled plates logged, and a sample read with frames stamped as Safari and Firefox stamp them, a recorded video's plates logged once each, and a phone's screen, with no console errors or failed requests. Main is then deployed |
+| Pages | Browser build | The pipeline compiled to WebAssembly and the site built; the tests of where a video's plates are drawn; the sample videos read natively, every labeled plate required; the WebAssembly build against the native one on every sample photo, with either detector; then the site in headless Chrome, served without isolation's headers as GitHub Pages serves it: the page isolating itself with its service worker and reading on several threads, every sample photo read as labeled and as natively, the inspector, keys, settings, an upload, the camera, the first sample video playing by itself, slowed to ¼× by its speed button, with its labeled plates logged, and a sample read with frames stamped as Safari and Firefox stamp them, a recorded video's plates logged once each, and a phone's screen, with no console errors or failed requests. Main is then deployed |
 
 [`web/capture.mjs`](web/capture.mjs) regenerates this README's images and the link preview from the built site.
 
@@ -284,7 +286,7 @@ node web/ui-check.mjs build-wasm/site native.json                # the site in h
 
 ## Credits
 
-- The detector is [open-image-models](https://github.com/ankandrew/open-image-models)' `yolo-v9-t-384-license-plate-end2end`, and the reader [fast-plate-ocr](https://github.com/ankandrew/fast-plate-ocr)'s `cct-s-v2-global-model`, both by ankandrew under the MIT License; [`models/README.md`](models/README.md) has their notices. The detector was trained with [YOLOv9](https://github.com/WongKinYiu/yolov9) (Wang and Liao, 2024).
+- The detector is [open-image-models](https://github.com/ankandrew/open-image-models)' `yolo-v9-t-384-license-plate-end2end`, or for smaller plates its `yolo-v9-t-640-license-plate-end2end`, and the reader [fast-plate-ocr](https://github.com/ankandrew/fast-plate-ocr)'s `cct-s-v2-global-model`, both by ankandrew under the MIT License; [`models/README.md`](models/README.md) has their notices. The detector was trained with [YOLOv9](https://github.com/WongKinYiu/yolov9) (Wang and Liao, 2024).
 - The networks run on [ONNX Runtime](https://onnxruntime.ai) and ONNX Runtime Web (MIT). Images are decoded and encoded with [stb_image and stb_image_write](https://github.com/nothings/stb) (public domain), and the pipeline compiled with [Emscripten](https://emscripten.org).
 - The [OpenALPR benchmark](https://github.com/openalpr/benchmarks) (AGPL-3.0) is downloaded for the evaluation, not redistributed.
 - The sample photos and videos are from Wikimedia Commons; [`samples/README.md`](samples/README.md) credits each author and license, and lists what was cut from each video.

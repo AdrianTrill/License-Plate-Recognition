@@ -1,14 +1,15 @@
 """Prepares the two networks the pipeline runs, from their pinned upstream releases.
 
     pip install -r tools/requirements.txt
-    python tools/prepare_models.py           # writes models/detector.onnx, models/recognizer.onnx, models/manifest.json
+    python tools/prepare_models.py           # writes the models in models/, and models/manifest.json
     python tools/prepare_models.py --check   # prepares them again and requires the hashes in models/manifest.json
 
-The detector is open-image-models' YOLOv9-t license plate detector at 384 pixels. It is published "end to end", with
-non-maximum suppression in the graph. The pipeline does that step itself, in C++, so that its thresholds can change
-while it runs and the whole network can run on WebGPU; this tool cuts the graph where the detection head ends. It
-refuses to write the result unless the cut graph, followed by the pipeline's own suppression, finds exactly the
-original graph's plates on every sample image.
+The detector is open-image-models' YOLOv9-t license plate detector at 384 pixels (detector.onnx), and the same network
+at 640 pixels (detector-640.onnx), which finds smaller plates and takes about two and a half times as long. Each is
+published "end to end", with non-maximum suppression in the graph. The pipeline does that step itself, in C++, so that
+its thresholds can change while it runs and the whole network can run on WebGPU; this tool cuts the graph where the
+detection head ends. It refuses to write the result unless the cut graph, followed by the pipeline's own suppression,
+finds exactly the original graph's plates on every sample image.
 
 The recognizer is fast-plate-ocr's cct-s-v2-global-model, as published. Its configuration must match the one compiled
 into the pipeline (src/recognizer.cpp).
@@ -38,17 +39,33 @@ MODELS = ROOT / "models"
 SAMPLES = ROOT / "samples"
 CACHE = ROOT / ".cache" / "upstream"
 
-DETECTOR = {
-    "name": "yolo-v9-t-384-license-plate-end2end",
-    "project": "https://github.com/ankandrew/open-image-models",
-    "license": "MIT",
-    "url": "https://github.com/ankandrew/open-image-models/releases/download/assets/"
-    "yolo-v9-t-384-license-plates-end2end.onnx",
-    "sha256": "888397b96d761c89db40bc9c305838e8652660f5e282c2cadebbe8d2951a77a8",
+# The detectors, by the name the manifest gives each, with the size of its square input.
+DETECTORS = {
+    "detector": (
+        384,
+        {
+            "name": "yolo-v9-t-384-license-plate-end2end",
+            "project": "https://github.com/ankandrew/open-image-models",
+            "license": "MIT",
+            "url": "https://github.com/ankandrew/open-image-models/releases/download/assets/"
+            "yolo-v9-t-384-license-plates-end2end.onnx",
+            "sha256": "888397b96d761c89db40bc9c305838e8652660f5e282c2cadebbe8d2951a77a8",
+        },
+    ),
+    "detector-640": (
+        640,
+        {
+            "name": "yolo-v9-t-640-license-plate-end2end",
+            "project": "https://github.com/ankandrew/open-image-models",
+            "license": "MIT",
+            "url": "https://github.com/ankandrew/open-image-models/releases/download/assets/"
+            "yolo-v9-t-640-license-plates-end2end.onnx",
+            "sha256": "c3c1026ca7d0585dd88084d68182dd897113712fa734ae1557ca70174440c076",
+        },
+    ),
 }
 # Where the detection head ends: box centers and sizes in input pixels, and the plate score, for every anchor.
 DETECTOR_HEAD = "/model/model.22/Concat_5_output_0"
-DETECTOR_SIZE = 384
 # The suppression the published graph runs, which the pipeline's must reproduce.
 NMS_IOU = 0.45
 NMS_SCORE = np.float32(0.001)
@@ -105,7 +122,12 @@ def fetch(source: dict) -> bytes:
     return data
 
 
-def cut_detector(end_to_end: bytes, directory: Path) -> bytes:
+def anchors(size: int) -> int:
+    """The detection head's anchors: one per cell of its three grids, at strides 8, 16, and 32."""
+    return sum((size // stride) ** 2 for stride in (8, 16, 32))
+
+
+def cut_detector(end_to_end: bytes, directory: Path, source: dict) -> bytes:
     """The published detector without its suppression: one output, 'predictions', [1, 5, anchors]."""
     full = directory / "end2end.onnx"
     full.write_bytes(end_to_end)
@@ -119,11 +141,11 @@ def cut_detector(end_to_end: bytes, directory: Path) -> bytes:
     (output,) = model.graph.output
     output.name = "predictions"
     model.doc_string = (
-        f"{DETECTOR['name']} from {DETECTOR['project']} ({DETECTOR['license']}), without its non-maximum "
+        f"{source['name']} from {source['project']} ({source['license']}), without its non-maximum "
         f"suppression. Output: box centers, sizes, and plate scores for every anchor, in input pixels."
     )
     del model.metadata_props[:]
-    for key, value in (("source", DETECTOR["url"]), ("source_sha256", DETECTOR["sha256"])):
+    for key, value in (("source", source["url"]), ("source_sha256", source["sha256"])):
         model.metadata_props.add(key=key, value=value)
     onnx.checker.check_model(model)
     return model.SerializeToString()
@@ -166,7 +188,7 @@ def suppress(predictions: np.ndarray) -> np.ndarray:
     return np.concatenate([boxes[chosen], scores[chosen, None]], axis=1)
 
 
-def check_detector(end_to_end: bytes, head: bytes, samples: Path) -> int:
+def check_detector(end_to_end: bytes, head: bytes, samples: Path, size: int) -> int:
     """Requires the cut graph and the pipeline's suppression to find the published graph's plates; returns how many."""
     options = ort.SessionOptions()
     options.log_severity_level = 3
@@ -177,12 +199,12 @@ def check_detector(end_to_end: bytes, head: bytes, samples: Path) -> int:
         raise SystemExit(f"no images in {samples} to check the detector with")
     plates = 0
     for path in images:
-        tensor = letterbox(Image.open(path), DETECTOR_SIZE)
+        tensor = letterbox(Image.open(path), size)
         expected = full.run(None, {"images": tensor})[0]
         expected = expected[np.argsort(-expected[:, 6], kind="stable")]
         (predictions,) = cut.run(None, {"images": tensor})
-        if predictions.shape != (1, 5, 3024):
-            raise SystemExit(f"the cut detector's output is {predictions.shape}, not (1, 5, 3024)")
+        if predictions.shape != (1, 5, anchors(size)):
+            raise SystemExit(f"the cut detector's output is {predictions.shape}, not (1, 5, {anchors(size)})")
         actual = suppress(predictions)
         if len(actual) != len(expected):
             raise SystemExit(f"{path.name}: {len(actual)} detections after suppression, the published graph has {len(expected)}")
@@ -191,7 +213,7 @@ def check_detector(end_to_end: bytes, head: bytes, samples: Path) -> int:
         if box_error > 1e-3 or score_error > 1e-6:
             raise SystemExit(f"{path.name}: boxes differ by {box_error:.2e} px and scores by {score_error:.2e}")
         plates += int((expected[:, 6] >= 0.4).sum())
-    print(f"Detector: the cut graph reproduces the published one's {plates} plates on {len(images)} sample images")
+    print(f"Detector at {size}: the cut graph reproduces the published one's {plates} plates on {len(images)} samples")
     return plates
 
 
@@ -229,25 +251,26 @@ def check_recognizer(model: bytes, config_text: bytes) -> dict:
 
 
 def prepare(directory: Path, samples: Path) -> dict:
-    end_to_end = fetch(DETECTOR)
-    with tempfile.TemporaryDirectory() as scratch:
-        detector = cut_detector(end_to_end, Path(scratch))
-    check_detector(end_to_end, detector, samples)
-    recognizer = fetch(RECOGNIZER)
-    config = check_recognizer(recognizer, fetch(RECOGNIZER_CONFIG))
-
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "detector.onnx").write_bytes(detector)
-    (directory / "recognizer.onnx").write_bytes(recognizer)
-    return {
-        "detector": {
-            "file": "detector.onnx",
+    manifest = {}
+    for name, (size, source) in DETECTORS.items():
+        end_to_end = fetch(source)
+        with tempfile.TemporaryDirectory() as scratch:
+            detector = cut_detector(end_to_end, Path(scratch), source)
+        check_detector(end_to_end, detector, samples, size)
+        (directory / f"{name}.onnx").write_bytes(detector)
+        manifest[name] = {
+            "file": f"{name}.onnx",
             "bytes": len(detector),
             "sha256": sha256(detector),
-            "input": {"name": "images", "shape": [1, 3, DETECTOR_SIZE, DETECTOR_SIZE], "type": "float32"},
-            "output": {"name": "predictions", "shape": [1, 5, 3024], "type": "float32"},
-            "source": DETECTOR,
-        },
+            "input": {"name": "images", "shape": [1, 3, size, size], "type": "float32"},
+            "output": {"name": "predictions", "shape": [1, 5, anchors(size)], "type": "float32"},
+            "source": source,
+        }
+    recognizer = fetch(RECOGNIZER)
+    config = check_recognizer(recognizer, fetch(RECOGNIZER_CONFIG))
+    (directory / "recognizer.onnx").write_bytes(recognizer)
+    return manifest | {
         "recognizer": {
             "file": "recognizer.onnx",
             "bytes": len(recognizer),
@@ -274,15 +297,15 @@ def main() -> None:
     path = MODELS / "manifest.json"
     if args.check:
         committed = json.loads(path.read_text())
-        for name in ("detector", "recognizer"):
-            if committed[name]["sha256"] != manifest[name]["sha256"]:
+        for name in manifest:
+            if committed.get(name, {}).get("sha256") != manifest[name]["sha256"]:
                 sys.exit(f"models/{name}.onnx came out as {manifest[name]['sha256']}, not as models/manifest.json has it")
         if path.read_text() != text:
             sys.exit("models/manifest.json is out of date: run tools/prepare_models.py")
         print("The prepared models match models/manifest.json")
         return
     path.write_text(text)
-    for name in ("detector", "recognizer"):
+    for name in manifest:
         print(f"models/{manifest[name]['file']}: {manifest[name]['bytes']:,} bytes, sha256 {manifest[name]['sha256']}")
 
 

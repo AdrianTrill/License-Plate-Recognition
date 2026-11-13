@@ -49,7 +49,8 @@ Options:
   --annotate DIR     write each image with its plates drawn into DIR
   --threshold X      the detector's score threshold (default 0.4)
   --iou X            the overlap above which non-maximum suppression drops a box (default 0.45)
-  --models DIR       where detector.onnx and recognizer.onnx are (default: $LPR_MODELS, or the repository's models/)
+  --small-plates     detect at 640 pixels instead of 384: finds smaller plates, about 2.5 times slower
+  --models DIR       where the networks are (default: $LPR_MODELS, or the repository's models/)
   --threads N        threads for each network (default: ONNX Runtime's choice)
   --trace            add fingerprints of the networks' inputs to the JSON, to compare builds
   --version          print the versions and exit
@@ -74,6 +75,7 @@ struct Arguments {
     bool json = false;
     bool trace = false;
     bool misses = false;
+    bool small_plates = false;
     std::optional<fs::path> annotate;
     std::optional<fs::path> report;
     fs::path models = lpr::default_models_directory();
@@ -121,6 +123,8 @@ Arguments parse(int argc, char** argv) {
         const std::string_view word = words[i];
         if (word == "--json") {
             arguments.json = true;
+        } else if (word == "--small-plates") {
+            arguments.small_plates = true;
         } else if (word == "--trace") {
             arguments.trace = true;
         } else if (word == "--misses") {
@@ -194,9 +198,10 @@ struct Reader {
     lpr::Pipeline pipeline;
 
     explicit Reader(const Arguments& arguments)
-        : engine(lpr::OnnxEngineOptions{arguments.models / "detector.onnx",
-                                        arguments.models / "recognizer.onnx",
-                                        arguments.threads}),
+        : engine(lpr::OnnxEngineOptions{
+              arguments.models / (arguments.small_plates ? "detector-640.onnx" : "detector.onnx"),
+              arguments.models / "recognizer.onnx",
+              arguments.threads}),
           pipeline([&] {
               lpr::PipelineOptions options;
               options.detector_size = engine.detector_size();

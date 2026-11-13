@@ -80,7 +80,9 @@ jobs:
       # On every sample, the WebAssembly pipeline with ONNX Runtime Web must give the networks the same bytes the native
       # one does, and read the same plates.
       - name: Check the WebAssembly build against the native one
-        run: node web/check.mjs build-wasm/site build/lpr samples/*.jpg
+        run: |
+          node web/check.mjs build-wasm/site build/lpr samples/*.jpg
+          node web/check.mjs build-wasm/site build/lpr samples/*.jpg --small-plates
 
       # The page itself, in the runner's Chrome: it must start without errors, read every sample as labeled and as the
       # command line does, answer its keys and settings, follow a video's plates, and fit a phone's screen.

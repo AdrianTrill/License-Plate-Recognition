@@ -44,13 +44,13 @@ export class Engine {
   }
 
   // Downloads and checks the models, and compiles them for WebGPU or WebAssembly.
-  init({ gpu, onProgress }) {
+  init({ gpu, small = false, onProgress }) {
     this.onProgress = onProgress ?? (() => {});
     this.ready ??= (async () => {
       const response = await fetch(`${this.base}models/manifest.json`);
       if (!response.ok) throw new Error(`Could not load the models' manifest (HTTP ${response.status})`);
       this.manifest = await response.json();
-      const ready = await this.request({ type: 'init', base: this.base, manifest: this.manifest, gpu });
+      const ready = await this.request({ type: 'init', base: this.base, manifest: this.manifest, gpu, small });
       this.backend = ready.backend;
       this.versions = ready.versions;
       return ready;

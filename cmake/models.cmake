@@ -7,7 +7,7 @@ set(LPR_MODELS_URL "https://adriantrill.github.io/License-Plate-Recognition/mode
 
 if(LPR_DOWNLOAD_MODELS)
     file(READ ${PROJECT_SOURCE_DIR}/models/manifest.json lpr_manifest)
-    foreach(network detector recognizer)
+    foreach(network detector detector-640 recognizer)
         string(JSON lpr_file GET "${lpr_manifest}" ${network} file)
         string(JSON lpr_hash GET "${lpr_manifest}" ${network} sha256)
         set(lpr_path ${PROJECT_SOURCE_DIR}/models/${lpr_file})

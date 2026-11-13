@@ -323,6 +323,29 @@ await check('a video is read where video frames carry no time, as in Safari and 
   }
 });
 
+await check('the setting for smaller plates loads the larger detector, which reads the first sample as labeled', async () => {
+  const other = await browser.newPage();
+  other.on('pageerror', (error) => problems.push(`uncaught: ${error.message}`));
+  other.on('console', (message) => {
+    if (message.type() === 'error') problems.push(`console: ${message.text()}`);
+  });
+  await other.evaluateOnNewDocument(() => {
+    localStorage.setItem('lpr-settings', JSON.stringify({ gpu: false, small: true }));
+  });
+  try {
+    await other.goto(`${site}?sample=${samples[0].id}`, { waitUntil: 'load' });
+    await other.waitForFunction(() => document.body.dataset.ready === 'true', { timeout: 120000 });
+    await other.waitForFunction(() => document.querySelectorAll('#plates .plate-card').length > 0, { timeout: 60000 });
+    const fact = await other.$eval('#fact-runtime', (node) => node.textContent);
+    expect(fact.includes('640 pixels'), `the larger detector: "${fact}"`);
+    expect(await other.$eval('#small', (node) => node.checked), 'its setting is on');
+    const read = await other.$$eval('#plates .plate-chip', (chips) => chips.map((chip) => chip.getAttribute('aria-label')));
+    expect(samples[0].plates.every((plate) => read.includes(plate)), `read ${read.join(', ')}`);
+  } finally {
+    await other.close();
+  }
+});
+
 await check('a phone screen fits without sideways scrolling', async () => {
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await page.goto(`${site}?sample=${samples[1].id}`, { waitUntil: 'load' });

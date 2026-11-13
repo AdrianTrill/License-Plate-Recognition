@@ -51,7 +51,7 @@ const SPEEDS = [
 ];
 
 function loadSettings() {
-  const defaults = { threshold: 0.4, iou: 0.45, gpu: true, labels: true };
+  const defaults = { threshold: 0.4, iou: 0.45, gpu: true, small: false, labels: true };
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem('lpr-settings') ?? '{}') };
   } catch {
@@ -95,7 +95,7 @@ async function start() {
   await isolate();
   try {
     const [ready] = await Promise.all([
-      engine.init({ gpu: settings.gpu, onProgress: showProgress }),
+      engine.init({ gpu: settings.gpu, small: settings.small, onProgress: showProgress }),
       loadSamples(),
     ]);
     state.ready = true;
@@ -104,12 +104,13 @@ async function start() {
     const label = ready.backend === 'webgpu' ? 'WebGPU' : 'WebAssembly';
     $('#runtime').dataset.state = 'ready';
     $('#runtime-label').textContent = label;
-    const threads = ready.versions.threads > 1 ? ` on ${ready.versions.threads} threads` : '';
+    const threads = ready.backend !== 'webgpu' && ready.versions.threads > 1 ? ` on ${ready.versions.threads} threads` : '';
     $('#runtime').title = `The networks run in this page on ${label}${threads}, with ONNX Runtime Web ${ready.versions.ort ?? ''}`;
-    const { detector, recognizer } = engine.manifest;
+    const { recognizer } = engine.manifest;
+    const detector = (settings.small && engine.manifest['detector-640']) || engine.manifest.detector;
     $('#fact-runtime').textContent =
-      `ONNX Runtime Web ${ready.versions.ort ?? ''} on ${label}: YOLOv9-t detector (${bytes(detector.bytes)}) and ` +
-      `CCT-S reader (${bytes(recognizer.bytes)})`;
+      `ONNX Runtime Web ${ready.versions.ort ?? ''} on ${label}: YOLOv9-t detector at ${detector.input.shape[2]} pixels ` +
+      `(${bytes(detector.bytes)}) and CCT-S reader (${bytes(recognizer.bytes)})`;
     $('#loading').hidden = true;
     document.body.dataset.ready = 'true';
     if (state.pending) {
@@ -661,6 +662,13 @@ bindRange('iou', 'iou');
 $('#gpu').checked = settings.gpu;
 $('#gpu').addEventListener('change', () => {
   settings.gpu = $('#gpu').checked;
+  saveSettings();
+  toast('Restarting the reader…');
+  setTimeout(() => location.reload(), 500);
+});
+$('#small').checked = settings.small;
+$('#small').addEventListener('change', () => {
+  settings.small = $('#small').checked;
   saveSettings();
   toast('Restarting the reader…');
   setTimeout(() => location.reload(), 500);

@@ -176,7 +176,7 @@ export function renderInspector(plate, input) {
 
 const STAGES = [
   ['pixels', 'Pixels', 'browser', 'Draw the image and copy its pixels'],
-  ['letterbox', 'Letterbox', 'cpp', 'Scale to 384 x 384 and pad: C++ in WebAssembly'],
+  ['letterbox', 'Letterbox', 'cpp', "Scale to the detector's square and pad: C++ in WebAssembly"],
   ['detector', 'Detector', 'network', 'YOLOv9-t finds the plates'],
   ['crops', 'Crops', 'cpp', 'Suppress overlaps, map boxes back, cut out each plate at 128 x 64: C++'],
   ['recognizer', 'Reader', 'network', 'CCT-S reads every plate at once'],

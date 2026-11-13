@@ -117,6 +117,16 @@ public:
         return pipeline_.options().detector_size;
     }
 
+    // The detector's square input, in pixels: 384, or 640 for the larger detector.
+    void setDetectorSize(int size) {
+        guarded([&] {
+            lpr::PipelineOptions options = pipeline_.options();
+            options.detector_size = size;
+            pipeline_.set_options(options);
+            return 0;
+        });
+    }
+
     // Adds the last frame's plates to the tracker; returns its events and tracks as JSON.
     std::string track(double timestamp_ms) {
         return guarded([&] { return tracking_json(tracker_.update(pipeline_.result(), timestamp_ms)); });
@@ -187,6 +197,7 @@ EMSCRIPTEN_BINDINGS(lpr) {
         .function("read", &WebPipeline::read)
         .function("setOptions", &WebPipeline::setOptions)
         .function("detectorSize", &WebPipeline::detectorSize)
+        .function("setDetectorSize", &WebPipeline::setDetectorSize)
         .function("track", &WebPipeline::track)
         .function("finishTracks", &WebPipeline::finishTracks)
         .function("resetTracks", &WebPipeline::resetTracks)

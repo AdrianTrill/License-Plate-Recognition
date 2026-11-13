@@ -66,6 +66,26 @@ int main() {
                  }
              }
          }},
+        {"every sample photo reads as labeled with the larger detector, at 640 pixels",
+         [&] {
+             if (!fs::exists(models / "detector-640.onnx")) {
+                 expect(false, "models/detector-640.onnx is missing: prepare the models with tools/prepare_models.py");
+                 return;
+             }
+             lpr::OnnxEngine large({models / "detector-640.onnx", models / "recognizer.onnx", 1});
+             expect_equal(large.detector_size(), 640, "its input's size");
+             lpr::PipelineOptions options;
+             options.detector_size = large.detector_size();
+             lpr::Pipeline pipeline(options);
+             for (const auto& [file, plates] : kSamples) {
+                 const lpr::Image image = lpr::read_image(samples / file);
+                 const std::vector<std::string> read = texts(pipeline.run(image.view(), large));
+                 for (const std::string& plate : plates) {
+                     expect(std::find(read.begin(), read.end(), plate) != read.end(),
+                            file + ": " + plate + " was not read; " + lpr::frame_json(pipeline.result(), config));
+                 }
+             }
+         }},
         {"the three steps give what run() gives",
          [&] {
              const lpr::Image image = lpr::read_image(samples / kSamples.front().first);

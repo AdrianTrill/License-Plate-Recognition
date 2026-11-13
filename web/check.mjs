@@ -3,9 +3,10 @@
 // the command line does with ONNX Runtime. Both decode the files with the same stb_image, so they start from the same
 // pixels; the networks' kernels add in different orders, so scores may differ in their last digits.
 //
-//   npm ci --prefix web && node web/check.mjs SITE_DIR LPR IMAGE... [--models DIR]
+//   npm ci --prefix web && node web/check.mjs SITE_DIR LPR IMAGE... [--models DIR] [--small-plates]
 //
-// SITE_DIR holds lpr.mjs (and models/, unless --models says otherwise); LPR is the native command line.
+// SITE_DIR holds lpr.mjs (and models/, unless --models says otherwise); LPR is the native command line. With
+// --small-plates, both use the larger detector, at 640 pixels.
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -15,9 +16,11 @@ import * as ort from 'onnxruntime-web';
 const args = process.argv.slice(2);
 const modelsFlag = args.indexOf('--models');
 const modelsDir = modelsFlag >= 0 ? args.splice(modelsFlag, 2)[1] : null;
+const smallFlag = args.indexOf('--small-plates');
+const small = smallFlag >= 0 && args.splice(smallFlag, 1).length > 0;
 const [siteDir, lpr, ...images] = args;
 if (!siteDir || !lpr || images.length === 0) {
-  console.error('usage: node web/check.mjs SITE_DIR LPR IMAGE... [--models DIR]');
+  console.error('usage: node web/check.mjs SITE_DIR LPR IMAGE... [--models DIR] [--small-plates]');
   process.exit(2);
 }
 const site = resolve(siteDir);
@@ -27,7 +30,8 @@ const createPipeline = (await import(pathToFileURL(join(site, 'lpr.mjs')).href))
 const pipeline = new (await createPipeline()).Pipeline();
 ort.env.wasm.numThreads = 1;
 ort.env.logLevel = 'error';
-const detector = await ort.InferenceSession.create(readFileSync(join(models, 'detector.onnx')));
+const detector = await ort.InferenceSession.create(readFileSync(join(models, small ? 'detector-640.onnx' : 'detector.onnx')));
+if (small) pipeline.setDetectorSize(640);
 const recognizer = await ort.InferenceSession.create(readFileSync(join(models, 'recognizer.onnx')));
 const size = pipeline.detectorSize();
 
@@ -48,7 +52,7 @@ async function readInWebAssembly(file) {
 }
 
 const native = JSON.parse(
-  execFileSync(resolve(lpr), ['--json', '--trace', '--threads', '1', '--models', models, ...images], {
+  execFileSync(resolve(lpr), ['--json', '--trace', '--threads', '1', '--models', models, ...(small ? ['--small-plates'] : []), ...images], {
     maxBuffer: 256 * 1024 * 1024,
   }).toString(),
 );
