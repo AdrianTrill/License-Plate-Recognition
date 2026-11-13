@@ -111,7 +111,7 @@ async function init({ base, manifest, gpu: allowGpu }) {
 }
 
 function versions() {
-  return { ort: ort?.env?.versions?.web ?? null };
+  return { ort: ort?.env?.versions?.web ?? null, threads: ort?.env?.wasm?.numThreads ?? 1 };
 }
 
 async function loadModel(url, sha256, size, onProgress) {

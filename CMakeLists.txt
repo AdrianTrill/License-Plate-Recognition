@@ -135,7 +135,7 @@ if(EMSCRIPTEN)
     # every build.
     file(GLOB LPR_WEB_ASSETS CONFIGURE_DEPENDS
          ${PROJECT_SOURCE_DIR}/web/index.html ${PROJECT_SOURCE_DIR}/web/style.css ${PROJECT_SOURCE_DIR}/web/favicon.svg
-         ${PROJECT_SOURCE_DIR}/web/social.png)
+         ${PROJECT_SOURCE_DIR}/web/social.png ${PROJECT_SOURCE_DIR}/web/sw.js)
     file(GLOB LPR_WEB_SCRIPTS CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/web/js/*.js)
     file(GLOB LPR_SAMPLE_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/samples/*.jpg ${PROJECT_SOURCE_DIR}/samples/*.json)
     file(GLOB LPR_SAMPLE_VIDEOS CONFIGURE_DEPENDS

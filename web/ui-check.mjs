@@ -103,11 +103,15 @@ await page.evaluateOnNewDocument(() => {
   localStorage.setItem('lpr-settings', JSON.stringify({ gpu: false }));
 });
 
-await check('the page starts, downloads and checks the networks, and reads the first sample', async () => {
+await check('the page starts, isolates itself, downloads and checks the networks, and reads the first sample', async () => {
+  // Served like GitHub Pages, without isolation's headers: the service worker adds them, and the page reloads once.
   await page.goto(site, { waitUntil: 'load' });
   await page.waitForFunction(() => document.body.dataset.ready === 'true', { timeout: 120000 });
   await page.waitForFunction(() => document.querySelectorAll('.plate-card').length > 0, { timeout: 60000 });
   expect((await page.$eval('#runtime-label', (node) => node.textContent)) === 'WebAssembly', 'runs on WebAssembly');
+  expect(await page.evaluate(() => crossOriginIsolated), 'the service worker isolates the page');
+  const runtime = await page.$eval('#runtime', (node) => node.title);
+  expect(/on [2-9] threads/.test(runtime), `WebAssembly runs on several threads: "${runtime}"`);
   expect(await page.$eval('#loading', (node) => node.hidden), 'the loading card is gone');
   await shoot('photo');
 });

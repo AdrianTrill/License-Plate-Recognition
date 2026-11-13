@@ -1,6 +1,7 @@
 // The page: modes, samples, files, settings, and shortcuts, around the engine (the worker), the viewer, and the sidebar.
 
 import { Engine } from './engine.js';
+import { isolate } from './isolate.js';
 import { $, bytes, clock, element, icon, milliseconds, toast } from './format.js';
 import { Live } from './live.js';
 import { PlateLog, renderInspector, renderPlates, renderStages } from './plates.js';
@@ -91,6 +92,7 @@ function showProgress(message) {
 
 async function start() {
   $('#progress-bar').parentElement.dataset.indeterminate = 'true';
+  await isolate();
   try {
     const [ready] = await Promise.all([
       engine.init({ gpu: settings.gpu, onProgress: showProgress }),
@@ -102,7 +104,8 @@ async function start() {
     const label = ready.backend === 'webgpu' ? 'WebGPU' : 'WebAssembly';
     $('#runtime').dataset.state = 'ready';
     $('#runtime-label').textContent = label;
-    $('#runtime').title = `The networks run in this page on ${label}, with ONNX Runtime Web ${ready.versions.ort ?? ''}`;
+    const threads = ready.versions.threads > 1 ? ` on ${ready.versions.threads} threads` : '';
+    $('#runtime').title = `The networks run in this page on ${label}${threads}, with ONNX Runtime Web ${ready.versions.ort ?? ''}`;
     const { detector, recognizer } = engine.manifest;
     $('#fact-runtime').textContent =
       `ONNX Runtime Web ${ready.versions.ort ?? ''} on ${label}: YOLOv9-t detector (${bytes(detector.bytes)}) and ` +
