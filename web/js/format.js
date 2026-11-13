@@ -54,6 +54,11 @@ export function clock(milliseconds) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+// Rows of cells as CSV, every cell quoted.
+export function csv(rows) {
+  return rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
+}
+
 // How sure a probability is, as the colors show it: green from 0.9, amber from 0.6, red below.
 export function sureness(probability) {
   if (probability >= 0.9) return 'high';

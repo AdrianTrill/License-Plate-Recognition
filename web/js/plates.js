@@ -1,6 +1,6 @@
 // The sidebar: the plates found, what the reader saw for one of them, and where the time went.
 
-import { $, clock, element, icon, milliseconds, percent, sureness } from './format.js';
+import { $, clock, csv, element, icon, milliseconds, percent, sureness } from './format.js';
 
 // A license plate drawn in HTML: a band with the region's code, then the characters, each underlined by how sure the
 // reader is of it.
@@ -373,6 +373,6 @@ export class PlateLog {
         reads,
       ]);
     }
-    return rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n');
+    return csv(rows);
   }
 }

@@ -93,8 +93,8 @@
         <canvas id="canvas" aria-label="The image, with its plates outlined"></canvas>
         <div class="viewer-empty" id="empty">
           <div class="empty-mark"><svg><use href="#i-upload"/></svg></div>
-          <p class="empty-title">Drop a photo here</p>
-          <p class="empty-hint">or open one, paste one, or pick a sample below. It is read on this device; nothing is uploaded.</p>
+          <p class="empty-title">Drop photos here</p>
+          <p class="empty-hint">or open one or several, paste one, or pick a sample below. They are read on this device; nothing is uploaded.</p>
         </div>
         <div class="viewer-busy" id="busy" hidden><span class="scanline"></span></div>
         <a class="credit" id="credit" target="_blank" rel="noopener" hidden></a>
@@ -114,7 +114,8 @@
 
       <div class="tray" id="tray">
         <div class="tray-photo" data-for="photo">
-          <button class="button primary" id="open-photo"><svg><use href="#i-upload"/></svg>Open a photo</button>
+          <button class="button primary" id="open-photo" title="One photo, or several: each is read, and the CSV lists the plates of all"><svg><use href="#i-upload"/></svg>Open photos</button>
+          <div class="samples batch" id="batch" role="listbox" aria-label="Your photos" hidden></div>
           <div class="samples" id="samples" role="listbox" aria-label="Sample photos"></div>
         </div>
         <div class="tray-live" data-for="camera" hidden>
@@ -205,7 +206,7 @@
     </header>
     <dl class="shortcuts">
       <dt><kbd>P</kbd> <kbd>C</kbd> <kbd>V</kbd></dt><dd>Photo, camera, or video</dd>
-      <dt><kbd>O</kbd></dt><dd>Open a photo or a video</dd>
+      <dt><kbd>O</kbd></dt><dd>Open photos or a video</dd>
       <dt><kbd>Ctrl</kbd> <kbd>V</kbd></dt><dd>Read a photo from the clipboard</dd>
       <dt><kbd>←</kbd> <kbd>→</kbd></dt><dd>Previous or next sample photo or video</dd>
       <dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Select a plate</dd>
@@ -218,7 +219,7 @@
     <p class="dialog-note">The detector is <a href="https://github.com/ankandrew/open-image-models" target="_blank" rel="noopener">open-image-models</a>' YOLOv9-t, the reader <a href="https://github.com/ankandrew/fast-plate-ocr" target="_blank" rel="noopener">fast-plate-ocr</a>'s CCT-S. Sample photos come from Wikimedia Commons; their authors and licenses are listed with each one.</p>
   </dialog>
 
-  <input type="file" id="photo-input" accept="image/*" hidden>
+  <input type="file" id="photo-input" accept="image/*" multiple hidden>
   <input type="file" id="video-input" accept="video/*" hidden>
   <div class="drop" id="drop" hidden><div class="drop-card"><svg><use href="#i-upload"/></svg>Drop to read the plates</div></div>
   <div class="toasts" id="toasts" aria-live="assertive"></div>

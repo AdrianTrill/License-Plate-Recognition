@@ -611,6 +611,44 @@ kbd {
   scrollbar-width: thin;
 }
 
+/* The visitor's photos, opened together, before the samples. */
+.samples.batch {
+  flex: 0 1 auto;
+  max-width: 55%;
+  padding-right: 10px;
+  border-right: 1px solid var(--line);
+}
+
+.samples.batch[hidden] {
+  display: none;
+}
+
+.sample-count {
+  position: absolute;
+  left: 5px;
+  bottom: 5px;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(5, 8, 12, 0.78);
+  color: var(--accent);
+  font: 700 10px/14px var(--mono);
+  text-align: center;
+}
+
+.sample-count[data-state='none'] {
+  color: #c6cfdc;
+}
+
+.sample-count[data-state='failed'] {
+  color: #f87171;
+}
+
+.sample-count[data-state='reading'] {
+  color: #c6cfdc;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
 .sample {
   position: relative;
   flex: none;
@@ -1426,6 +1464,12 @@ kbd {
 
   .samples {
     flex-basis: 100%;
+  }
+
+  .samples.batch {
+    max-width: none;
+    padding-right: 2px;
+    border-right: 0;
   }
 
   .sidebar {

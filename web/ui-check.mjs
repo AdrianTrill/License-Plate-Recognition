@@ -1,11 +1,11 @@
 // Checks the site itself in headless Chrome, as GitHub Pages serves it: it must start without errors, read every sample
-// as labeled and as the native command line does, answer its keys and settings, read an uploaded photo, run the camera
-// and a video through the tracker, save a video with its plates, and fit a phone's screen.
+// as labeled and as the native command line does, answer its keys and settings, read uploaded photos, one or several,
+// run the camera and a video through the tracker, save a video with its plates, and fit a phone's screen.
 //
 //   npm ci --prefix web && node web/ui-check.mjs SITE_DIR NATIVE_JSON [--screenshots DIR]
 //
 // NATIVE_JSON is `lpr --json samples/*.jpg`. Chrome comes from CHROME_PATH, or else from where it is usually installed.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -192,6 +192,115 @@ await check('an uploaded photo is read', async () => {
   const read = (await plates()).map((plate) => plate.text);
   expect(read.includes(samples[0].plates[0]), `read ${read.join(', ')}`);
   expect(!new URL(page.url()).searchParams.has('sample'), 'the address no longer names a sample');
+});
+
+await check('photos opened together are each read, listed with their plates, and exported as one CSV', async () => {
+  const chosen = samples.slice(1, 4);
+  // And a photo with no plate: a plain color.
+  const blank = join(tmpdir(), 'lpr-check-blank.png');
+  const png = await page.evaluate(() => {
+    const canvas = Object.assign(document.createElement('canvas'), { width: 640, height: 480 });
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#5a7896';
+    context.fillRect(0, 0, 640, 480);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+  writeFileSync(blank, Buffer.from(png, 'base64'));
+  const downloads = mkdtempSync(join(tmpdir(), 'lpr-csv-'));
+  const session = await browser.target().createCDPSession();
+  await session.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloads });
+  try {
+    const files = [...chosen.map((sample) => join(siteDir, 'samples', sample.file)), blank];
+    await (await page.$('#photo-input')).uploadFile(...files);
+    await page.waitForFunction(
+      (count) =>
+        document.querySelectorAll('#batch .sample').length === count &&
+        !document.querySelector('#batch .sample-count[data-state="reading"]'),
+      { timeout: 60000 },
+      files.length,
+    );
+    const listed = await page.$$eval('#batch .sample', (nodes) =>
+      nodes.map((node) => ({
+        label: node.getAttribute('aria-label'),
+        count: node.querySelector('.sample-count').textContent,
+        selected: node.getAttribute('aria-selected'),
+        thumbnail: Boolean(node.querySelector('img').getAttribute('src')),
+      })),
+    );
+    // In the order of their names, each with what the command line reads in it.
+    const expected = [
+      ...chosen.map((sample) => ({ name: sample.file, texts: native.get(sample.file).plates.map((plate) => plate.text) })),
+      { name: basename(blank), texts: [] },
+    ].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    expected.forEach(({ name, texts }, i) => {
+      const read = texts.length > 0 ? texts.join(', ') : 'no plates';
+      expect(listed[i].label === `${name}: ${read}`, `listed as ${listed[i].label}, not ${name}: ${read}`);
+      expect(listed[i].count === String(texts.length) && listed[i].thumbnail, `${name} has its count and thumbnail`);
+    });
+    expect(listed[0].selected === 'true', 'the first photo is shown');
+    await page.waitForFunction(() => document.querySelector('#busy').hidden, { timeout: 30000 });
+    const before = await page.$eval('#plates', (node) => node.dataset.read ?? '');
+    await page.keyboard.press('ArrowRight');
+    await waitForRead(before);
+    const shown = (await plates()).map((plate) => plate.text).sort();
+    const second = [...expected[1].texts].sort();
+    expect(JSON.stringify(shown) === JSON.stringify(second), `ArrowRight shows the next photo: ${shown.join(', ')}`);
+    await page.click('#export-button');
+    const path = join(downloads, 'photos-plates.csv');
+    const deadline = Date.now() + 10000;
+    while (!existsSync(path) && Date.now() < deadline) await sleep(100);
+    const rows = readFileSync(path, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(`[${line}]`));
+    const plateCount = chosen.reduce((sum, sample) => sum + native.get(sample.file).plates.length, 0);
+    expect(rows.length === 1 + plateCount + 1, `${rows.length} rows: a header, each plate, and the blank photo`);
+    const first = native.get(chosen[0].file).plates[0];
+    const row = rows.find((cells) => cells[0] === chosen[0].file && cells[1] === first.text);
+    expect(
+      row && JSON.stringify(row.slice(4).map(Number)) === JSON.stringify(first.box.map(Math.round)),
+      `a plate's row has its box in the photo's pixels: ${JSON.stringify(row)}`,
+    );
+    // A sample opened afterwards is no longer one of them.
+    const again = await page.$eval('#plates', (node) => node.dataset.read ?? '');
+    await page.click('#samples .sample:nth-child(1)');
+    await waitForRead(again);
+    expect(!(await page.$('#batch .sample[aria-selected="true"]')), 'opening a sample leaves the batch');
+  } finally {
+    await session.detach();
+    rmSync(downloads, { recursive: true, force: true });
+  }
+});
+
+await check("a dropped folder's photos, in its folders too, are read together in the order of their names", async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'lpr-folder-'));
+  mkdirSync(join(folder, 'more'));
+  const [a, b, c] = samples.slice(4, 7);
+  copyFileSync(join(siteDir, 'samples', a.file), join(folder, 'IMG_10.jpg'));
+  copyFileSync(join(siteDir, 'samples', b.file), join(folder, 'IMG_2.jpg'));
+  copyFileSync(join(siteDir, 'samples', c.file), join(folder, 'more', 'IMG_1.jpg'));
+  writeFileSync(join(folder, 'notes.txt'), 'not a photo');
+  const client = await page.createCDPSession();
+  try {
+    const data = { items: [], files: [folder], dragOperationsMask: 1 };
+    for (const type of ['dragEnter', 'dragOver', 'drop']) {
+      await client.send('Input.dispatchDragEvent', { type, x: 500, y: 400, data });
+    }
+    await page.waitForFunction(
+      () =>
+        document.querySelector('#batch .sample')?.title.startsWith('IMG_') &&
+        !document.querySelector('#batch .sample-count[data-state="reading"]'),
+      { timeout: 30000 },
+    );
+    const listed = await page.$$eval('#batch .sample', (nodes) => nodes.map((node) => node.getAttribute('aria-label')));
+    const expected = [c, b, a].map(
+      (sample, i) => `IMG_${[1, 2, 10][i]}.jpg: ${native.get(sample.file).plates.map((plate) => plate.text).join(', ')}`,
+    );
+    expect(JSON.stringify(listed) === JSON.stringify(expected), `listed ${listed.join(' | ')}`);
+  } finally {
+    await client.detach();
+    rmSync(folder, { recursive: true, force: true });
+  }
 });
 
 await check('the camera starts, reads frames, and stops', async () => {
