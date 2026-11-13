@@ -18,6 +18,7 @@ struct TrackerOptions {
     int min_reads = 3;               // reads before a track is reported
     float min_confidence = 0.6F;     // the fused reading's confidence before it is reported
     std::size_t min_characters = 4;  // shorter readings are partial plates, so they are followed but never reported
+    float extend_weight = 0.5F;      // a longer reading containing the heaviest wins with this share of its weight
 };
 
 // A plate followed across frames, with its reads fused into one.

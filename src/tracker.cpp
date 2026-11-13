@@ -111,19 +111,34 @@ void PlateTracker::absorb(std::size_t index, const PlateResult& plate, double ti
     }
     group->weight += weight;
 
+    const auto fused = [&](const Reads& reads) {
+        std::vector<float> probabilities(reads.probabilities.size());
+        std::transform(reads.probabilities.begin(), reads.probabilities.end(), probabilities.begin(), [&](double sum) {
+            return static_cast<float>(sum / reads.weight);
+        });
+        std::vector<float> region_probabilities(reads.region_probabilities.size());
+        std::transform(reads.region_probabilities.begin(),
+                       reads.region_probabilities.end(),
+                       region_probabilities.begin(),
+                       [&](double sum) { return static_cast<float>(sum / reads.weight); });
+        return decode_plate(probabilities, region_probabilities, *config_);
+    };
+    // The length with the most weight wins. But a plate seen small, or partly hidden, reads confidently with characters
+    // missing, as EP724 for EP7242, so a longer reading that contains the winner's, with enough weight, wins instead.
     const Reads& best = *std::max_element(fusion.by_length.begin(),
                                           fusion.by_length.end(),
                                           [](const Reads& a, const Reads& b) { return a.weight < b.weight; });
-    std::vector<float> probabilities(best.probabilities.size());
-    std::transform(best.probabilities.begin(), best.probabilities.end(), probabilities.begin(), [&](double sum) {
-        return static_cast<float>(sum / best.weight);
-    });
-    std::vector<float> region_probabilities(best.region_probabilities.size());
-    std::transform(best.region_probabilities.begin(),
-                   best.region_probabilities.end(),
-                   region_probabilities.begin(),
-                   [&](double sum) { return static_cast<float>(sum / best.weight); });
-    track.read = decode_plate(probabilities, region_probabilities, *config_);
+    PlateRead fused_read = fused(best);
+    for (const Reads& reads : fusion.by_length) {
+        if (reads.length <= fused_read.text.size() || reads.weight < options_.extend_weight * best.weight) {
+            continue;
+        }
+        PlateRead longer = fused(reads);
+        if (longer.text.size() > fused_read.text.size() && longer.text.find(fused_read.text) != std::string::npos) {
+            fused_read = std::move(longer);
+        }
+    }
+    track.read = std::move(fused_read);
 }
 
 std::vector<TrackEvent> PlateTracker::update(const FrameResult& frame, double timestamp_ms) {

@@ -160,6 +160,23 @@ int main() {
              expect_equal(log, std::string("reported:B108ZJE"), "events");
              expect(tracker.tracks()[0].read.confidence > 0.9F, "the whole reads agree");
          }},
+        {"a partial reading gives way to a longer one that contains it, with enough weight",
+         [] {
+             const auto run = [](const char* longer, int partial_reads, int longer_reads) {
+                 lpr::PlateTracker tracker;
+                 std::string log;
+                 int frame_index = 0;
+                 for (int i = 0; i < partial_reads + longer_reads; ++i) {
+                     // Far away, the plate reads with its last character missing; closer, it reads whole.
+                     const lpr::PlateRead read = reading(i < partial_reads ? "EP724" : longer, 0.99F);
+                     log = kinds(tracker.update(frame({plate_at(200, 300, read)}), 33.0 * frame_index++), log);
+                 }
+                 return log;
+             };
+             expect_equal(run("EP7242", 3, 2), std::string("reported:EP724 changed:EP7242"), "it contains it");
+             expect_equal(run("XP7243", 3, 2), std::string("reported:EP724"), "it doesn't contain it");
+             expect_equal(run("EP7242", 5, 2), std::string("reported:EP724"), "too few reads of it");
+         }},
         {"a plate cut off by the frame's edge is followed but not read",
          [] {
              lpr::PlateTracker tracker;
