@@ -4,6 +4,7 @@ import { Engine } from './engine.js';
 import { $, bytes, clock, element, icon, milliseconds, toast } from './format.js';
 import { Live } from './live.js';
 import { PlateLog, renderInspector, renderPlates, renderStages } from './plates.js';
+import { COAST_MS } from './timeline.js';
 import { Viewer } from './viewer.js';
 
 const base = new URL('./', document.baseURI).href;
@@ -40,9 +41,8 @@ const live = new Live({
   onEvents: liveEvents,
   onState: liveState,
   onPresent: (time) => viewer.present(time),
+  onDisplay: liveDisplay,
 });
-// How long a plate the detector missed is still drawn, moving on as it was.
-const COAST_MS = 250;
 const SPEEDS = [
   { rate: 1, label: '1×' },
   { rate: 0.5, label: '½×' },
@@ -361,17 +361,20 @@ function showCredit(credit) {
 
 function liveResult(result, info, frame) {
   if (state.mode === 'photo') return;
-  if (!viewer.live || viewer.source?.width !== info.width || viewer.source?.height !== info.height) {
-    viewer.showVideo(info.width, info.height);
+  // A video shown behind its reads has its frames drawn by liveDisplay; the camera is drawn here.
+  if (!info.delayed) {
+    if (!viewer.live || viewer.source?.width !== info.width || viewer.source?.height !== info.height) {
+      viewer.showVideo(info.width, info.height);
+    }
+    // Drawn: plates seen twice, so that they have a velocity to be drawn where they have moved to, and kept a moment
+    // when a frame misses them; logged views come only from the frames that found them.
+    const tracks = result.tracking.tracks.filter(
+      (track) => track.seen > 1 && info.timestamp - track.last_seen_ms <= COAST_MS,
+    );
+    state.liveTracks = tracks;
+    viewer.setPlates(tracks.map((track) => ({ ...track, faded: !track.reported })));
+    log.visible(new Set(tracks.map((track) => track.id)));
   }
-  // Drawn: plates seen twice, so that they have a velocity to be drawn where they have moved to, and kept a moment
-  // when a frame misses them; logged views come only from the frames that found them.
-  const tracks = result.tracking.tracks.filter(
-    (track) => track.seen > 1 && info.timestamp - track.last_seen_ms <= COAST_MS,
-  );
-  state.liveTracks = tracks;
-  viewer.setPlates(tracks.map((track) => ({ ...track, faded: !track.reported })));
-  log.visible(new Set(tracks.map((track) => track.id)));
   log.refresh(
     result.tracking.tracks.filter((track) => track.visible),
     frame,
@@ -382,6 +385,17 @@ function liveResult(result, info, frame) {
     state.stagesShown = now;
     renderStages(result.timings, result.backend);
   }
+}
+
+// A video's frame, shown behind its time, with its plates where they are in it.
+function liveDisplay({ bitmap, plates }) {
+  if (state.mode !== 'video') return;
+  state.liveTracks = plates;
+  viewer.showFrame(
+    bitmap,
+    plates.map((track) => ({ ...track, faded: !track.reported })),
+  );
+  log.visible(new Set(plates.map((track) => track.id)));
 }
 
 function liveEvents(events, frame) {
@@ -409,6 +423,7 @@ function liveState({ running, paused, kind, ended, error }) {
   if (running) {
     $('#viewer').dataset.state = 'live';
   } else if (!ended && state.mode !== 'photo') {
+    viewer.clearFrame();
     viewer.setPlates([]);
     $('#viewer').dataset.state = 'empty';
   }

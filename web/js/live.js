@@ -1,17 +1,27 @@
 // The camera and video modes: read frames as fast as the networks allow, follow the plates with the C++ tracker,
-// and log each plate once it is read confidently. A video plays at its own pace: each time the reader is free, it
-// takes the frame on screen, and on every frame shown in between, the plates are drawn where they have moved to.
+// and log each plate once it is read confidently.
+//
+// A camera is shown live, each plate drawn where it has moved to since its frame was read. A video is shown a little
+// behind instead: every frame it plays is kept until its turn, the reader takes the newest one each time it is free,
+// and each frame is shown with its plates placed between the reads before and after it, so that they fit.
+
+import { COAST_MS, platesAt } from './timeline.js';
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const smooth = (average, value) => (average === null ? value : average + 0.1 * (value - average));
+// How far behind its own time a video is shown, in its milliseconds: enough for the read after a frame to be done.
+const MIN_DELAY = 50;
+const MAX_DELAY = 600;
 
 export class Live {
-  constructor({ engine, video, onResult, onEvents, onState, onPresent }) {
+  constructor({ engine, video, onResult, onEvents, onState, onPresent, onDisplay }) {
     this.engine = engine;
     this.video = video;
     this.onResult = onResult;
     this.onEvents = onEvents;
     this.onState = onState;
     this.onPresent = onPresent;
+    this.onDisplay = onDisplay;
     this.stream = null;
     this.kind = null; // 'camera' or 'video'
     this.running = false;
@@ -25,7 +35,16 @@ export class Live {
     this.shown = null; // the frame the video showed last: { time, count }, from requestVideoFrameCallback
     this.lastStamp = null; // the frame read last, by its timestamp and by the count of frames shown, so that none
     this.lastCount = null; // is read twice
+    // A video's frames, oldest first ({ time, bitmap }), the reads of some of them ({ time, tracks }), and how far
+    // behind its time it is shown; a jump in it begins a new epoch, whose reads alone count.
+    this.queue = [];
+    this.reads = [];
+    this.epoch = 0;
+    this.delay = 150;
     this.video.addEventListener('ended', () => this.ended());
+    this.video.addEventListener('seeking', () => {
+      if (this.kind === 'video') this.flush();
+    });
   }
 
   async startCamera(facing = this.facing) {
@@ -83,18 +102,46 @@ export class Live {
     this.shown = null;
     this.lastStamp = null;
     this.lastCount = null;
+    this.flush();
     this.engine.resetTracks();
     this.frames = [];
     this.onState({ running: true, paused: false, kind });
     this.generation += 1;
-    this.loop(this.generation);
-    this.present(this.generation);
+    if (kind === 'video' && this.video.requestVideoFrameCallback) {
+      this.collect(this.generation);
+      this.readFrames(this.generation);
+      this.display(this.generation);
+    } else {
+      this.loop(this.generation);
+      this.present(this.generation);
+    }
+  }
+
+  // Forgets a video's frames and reads, when it starts again or jumps.
+  flush() {
+    for (const entry of this.queue) this.release(entry);
+    this.queue = [];
+    this.reads = [];
+    this.epoch += 1;
+    this.readCount = 0;
+    this.lastRead = null;
+    this.displayed = null;
+    this.latency = null;
+    this.interval = null;
+    this.gap = null;
+  }
+
+  release(entry) {
+    entry.released = true;
+    entry.bitmap?.close();
+    entry.bitmap = null;
   }
 
   stop() {
     this.generation += 1;
     this.running = false;
     this.paused = false;
+    this.flush();
     if (this.stream) {
       for (const track of this.stream.getTracks()) track.stop();
       this.stream = null;
@@ -119,10 +166,146 @@ export class Live {
   async ended() {
     if (this.kind !== 'video' || !this.running) return;
     this.generation += 1;
+    // The last frame, which the delay would otherwise leave unshown.
+    const last = this.queue.findLast((entry) => entry.bitmap);
+    if (last) this.show(last);
     const tracking = await this.engine.finishTracks();
     this.onEvents(tracking.events, null);
     this.running = false;
     this.onState({ running: false, paused: false, kind: 'video', ended: true });
+  }
+
+  // Keeps every frame the video shows, with its time, until it has been shown in its turn.
+  collect(generation) {
+    const video = this.video;
+    const step = (now, metadata) => {
+      if (!this.running || generation !== this.generation) return;
+      const time = metadata.mediaTime * 1000;
+      const last = this.queue.at(-1);
+      if (!last || time > last.time) {
+        if (last) this.gap = smooth(this.gap, time - last.time);
+        const entry = { time, bitmap: null, released: false };
+        this.queue.push(entry);
+        // A video playing while the page is hidden is not shown: keep a few seconds of frames at most.
+        while (this.queue.length > 150) this.release(this.queue.shift());
+        const capture = () =>
+          createImageBitmap(video).then(
+            (bitmap) => {
+              if (entry.released || generation !== this.generation) {
+                bitmap.close();
+              } else {
+                entry.bitmap = bitmap;
+                this.wake();
+              }
+            },
+            () => {
+              entry.released = true;
+            },
+          );
+        // Firefox can call back a refresh before the frame is shown, while the video's image is still the one before.
+        const wait = metadata.expectedDisplayTime - performance.now();
+        if (wait > 4) setTimeout(capture, wait + 1);
+        else capture();
+      }
+      video.requestVideoFrameCallback(step);
+    };
+    video.requestVideoFrameCallback(step);
+  }
+
+  // Resolves when a frame arrives, or after a tenth of a second.
+  idle() {
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(done, 100);
+      this.waiting = done;
+    });
+  }
+
+  wake() {
+    const waiting = this.waiting;
+    this.waiting = null;
+    waiting?.();
+  }
+
+  // Reads the newest frame each time the reader is free.
+  async readFrames(generation) {
+    while (this.running && generation === this.generation) {
+      const entry = this.queue.findLast(
+        (candidate) => candidate.bitmap && (this.lastRead === null || candidate.time > this.lastRead),
+      );
+      if (!entry) {
+        await this.idle();
+        continue;
+      }
+      this.lastRead = entry.time;
+      const epoch = this.epoch;
+      let frame;
+      try {
+        frame = await createImageBitmap(entry.bitmap);
+      } catch {
+        continue;
+      }
+      const start = performance.now();
+      let result;
+      try {
+        result = await this.engine.read(frame, { track: true, timestamp: entry.time });
+      } catch (error) {
+        if (generation === this.generation) this.onState({ running: false, error });
+        return;
+      }
+      if (generation !== this.generation) return;
+      if (epoch === this.epoch) {
+        const previous = this.reads.at(-1);
+        this.reads.push({ time: entry.time, tracks: result.tracking.tracks.filter((track) => track.visible) });
+        this.readCount += 1;
+        this.latency = smooth(this.latency, Math.max(0, this.video.currentTime * 1000 - entry.time));
+        if (previous) this.interval = smooth(this.interval, entry.time - previous.time);
+      }
+      this.frames.push(performance.now());
+      while (this.frames.length > 20) this.frames.shift();
+      const elapsed = (this.frames.at(-1) - this.frames[0]) / Math.max(1, this.frames.length - 1);
+      const info = {
+        width: this.video.videoWidth,
+        height: this.video.videoHeight,
+        latency: performance.now() - start,
+        fps: this.frames.length > 1 ? 1000 / elapsed : 0,
+        timestamp: entry.time,
+        delayed: true,
+      };
+      this.onResult(result, info, entry.bitmap);
+      if (result.tracking.events.length > 0) this.onEvents(result.tracking.events, entry.bitmap);
+    }
+  }
+
+  // Shows the video's frames a little behind its time, each with its plates placed between the reads around it.
+  display(generation) {
+    const step = () => {
+      if (generation !== this.generation) return;
+      const wanted = (this.latency ?? 0) + (this.interval ?? 0) + (this.gap ?? 0);
+      this.delay += 0.03 * (Math.min(MAX_DELAY, Math.max(MIN_DELAY, wanted)) - this.delay);
+      const target = this.video.currentTime * 1000 - this.delay;
+      let chosen = null;
+      for (const entry of this.queue) {
+        if (!entry.bitmap) continue;
+        if (!chosen || entry.time <= target) chosen = entry;
+        if (entry.time > target) break;
+      }
+      if (chosen && (chosen !== this.displayed || this.readCount !== this.displayedReads)) this.show(chosen);
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  show(entry) {
+    this.displayed = entry;
+    this.displayedReads = this.readCount;
+    this.onDisplay({ bitmap: entry.bitmap, time: entry.time, plates: platesAt(this.reads, entry.time) });
+    // The frames before it are done with, and so are the reads too old to place a plate in it.
+    while (this.queue.length > 0 && this.queue[0] !== entry) this.release(this.queue.shift());
+    while (this.reads.length > 1 && this.reads[1].time < entry.time - 2 * COAST_MS) this.reads.shift();
   }
 
   // On every frame the video shows, its time on the tracker's clock: a video's own time, or the camera's since it

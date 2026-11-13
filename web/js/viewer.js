@@ -14,6 +14,7 @@ export class Viewer {
     this.video = video;
     this.context = canvas.getContext('2d');
     this.bitmap = null;
+    this.frame = null; // a video's frame, shown in place of the video, behind its time
     this.source = null; // { width, height } of what the plates' boxes refer to
     this.live = false;
     this.time = null; // a video's time on screen, on the tracker's clock
@@ -49,13 +50,34 @@ export class Viewer {
     this.source = { width, height };
     this.canvas.parentElement.style.setProperty('--aspect', `${width} / ${height}`);
     this.live = true;
+    this.frame = null;
     this.time = null;
     this.plates = [];
     this.selected = -1;
     this.draw();
   }
 
-  // A new frame of the video is on screen.
+  // A frame of a video, drawn in place of the playing video, with its plates where they are in it. Whoever made the
+  // frame closes it, after showing the next.
+  showFrame(bitmap, plates) {
+    if (!this.live || this.source?.width !== bitmap.width || this.source?.height !== bitmap.height) {
+      this.source = { width: bitmap.width, height: bitmap.height };
+      this.canvas.parentElement.style.setProperty('--aspect', `${bitmap.width} / ${bitmap.height}`);
+      this.live = true;
+    }
+    this.frame = bitmap;
+    this.time = null;
+    this.plates = plates;
+    if (this.selected >= plates.length) this.selected = -1;
+    this.draw();
+  }
+
+  clearFrame() {
+    this.frame = null;
+    this.draw();
+  }
+
+  // A new frame of the camera is on screen.
   present(time) {
     this.time = time;
     if (this.live && this.plates.length > 0) this.draw();
@@ -63,6 +85,7 @@ export class Viewer {
 
   clear() {
     this.bitmap = null;
+    this.frame = null;
     this.source = null;
     this.live = false;
     this.time = null;
@@ -168,15 +191,14 @@ export class Viewer {
     if (!layout) return;
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-    if (this.bitmap && !this.live) {
+    const image = this.live ? this.frame : this.bitmap;
+    if (image) {
       context.imageSmoothingQuality = 'high';
-      context.drawImage(
-        this.bitmap,
-        layout.left,
-        layout.top,
-        this.source.width * layout.scale,
-        this.source.height * layout.scale,
-      );
+      try {
+        context.drawImage(image, layout.left, layout.top, this.source.width * layout.scale, this.source.height * layout.scale);
+      } catch {
+        // A video's frame closed as it stopped: nothing to show.
+      }
     }
 
     const focus = this.hover >= 0 ? this.hover : this.pinned ? this.selected : -1;

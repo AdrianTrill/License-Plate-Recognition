@@ -52,6 +52,9 @@ jobs:
       - name: Install ONNX Runtime Web and the checks' tools
         run: npm ci --prefix web
 
+      - name: Test where a video's plates are drawn
+        run: node --test web/timeline.test.mjs
+
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v16
         with:
